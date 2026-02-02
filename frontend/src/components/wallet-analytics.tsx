@@ -43,7 +43,7 @@ export function WalletAnalyticsView({ data }: WalletAnalyticsProps) {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
+        <Card className="glass-card">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-muted-foreground">
               Total PnL
@@ -60,7 +60,7 @@ export function WalletAnalyticsView({ data }: WalletAnalyticsProps) {
             </p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="glass-card">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-muted-foreground">
               Win Rate
@@ -70,7 +70,7 @@ export function WalletAnalyticsView({ data }: WalletAnalyticsProps) {
             <p className="text-xl font-bold">{data.win_rate}%</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="glass-card">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-muted-foreground">
               Trades
@@ -80,7 +80,7 @@ export function WalletAnalyticsView({ data }: WalletAnalyticsProps) {
             <p className="text-xl font-bold">{data.trade_count}</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="glass-card">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-muted-foreground">
               Tokens
@@ -93,12 +93,12 @@ export function WalletAnalyticsView({ data }: WalletAnalyticsProps) {
       </div>
 
       {/* Recent trades */}
-      <Card>
+      <Card className="glass-card">
         <CardHeader>
           <CardTitle>Recent Trades</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="rounded-md border overflow-auto">
+          <div className="rounded-md border border-border/50 overflow-auto">
             <Table>
               <TableHeader>
                 <TableRow>

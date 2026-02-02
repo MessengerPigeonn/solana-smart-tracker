@@ -7,17 +7,23 @@ export default function LandingPage() {
   return (
     <div className="flex flex-col">
       {/* Hero */}
-      <section className="relative overflow-hidden border-b">
-        <div className="container mx-auto px-4 py-24 md:py-32 text-center">
+      <section className="relative overflow-hidden border-b border-border/30">
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background: "radial-gradient(ellipse at 50% 0%, rgba(36,219,201,0.08) 0%, transparent 70%)",
+          }}
+        />
+        <div className="container mx-auto px-4 py-24 md:py-32 text-center relative z-10">
           <h1 className="text-4xl md:text-6xl font-bold tracking-tight mb-6">
-            Track <span className="text-primary">Smart Money</span> on Solana
+            Track <span className="text-gradient">Smart Money</span> on Solana
           </h1>
           <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
             Real-time whale wallet tracking, automated buy/sell callouts, and
             smart money overlap detection for Solana memecoins.
           </p>
           <div className="flex gap-4 justify-center">
-            <Button size="lg" asChild>
+            <Button size="lg" variant="gradient" className="animate-pulse-glow" asChild>
               <Link href="/signup">Start Free</Link>
             </Button>
             <Button size="lg" variant="outline" asChild>
@@ -33,7 +39,7 @@ export default function LandingPage() {
           Everything you need to follow the whales
         </h2>
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <Card>
+          <Card className="glass-card">
             <CardHeader>
               <CardTitle className="text-lg">Token Scanner</CardTitle>
             </CardHeader>
@@ -42,7 +48,7 @@ export default function LandingPage() {
               and smart money metrics.
             </CardContent>
           </Card>
-          <Card>
+          <Card className="glass-card">
             <CardHeader>
               <CardTitle className="text-lg">Smart Callouts</CardTitle>
             </CardHeader>
@@ -51,7 +57,7 @@ export default function LandingPage() {
               activity and volume spikes.
             </CardContent>
           </Card>
-          <Card>
+          <Card className="glass-card">
             <CardHeader>
               <CardTitle className="text-lg">Wallet Tracker</CardTitle>
             </CardHeader>
@@ -60,7 +66,7 @@ export default function LandingPage() {
               and behavioral patterns.
             </CardContent>
           </Card>
-          <Card>
+          <Card className="glass-card">
             <CardHeader>
               <CardTitle className="text-lg">Overlap Detection</CardTitle>
             </CardHeader>
@@ -73,7 +79,7 @@ export default function LandingPage() {
       </section>
 
       {/* Pricing */}
-      <section className="border-t bg-muted/30">
+      <section className="border-t border-border/30 bg-muted/30">
         <div className="container mx-auto px-4 py-20">
           <h2 className="text-3xl font-bold text-center mb-4">
             Simple pricing
@@ -128,7 +134,7 @@ export default function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t py-8">
+      <footer className="border-t border-border/30 py-8">
         <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
           SolTracker &mdash; Smart money analysis for Solana memecoins.
         </div>

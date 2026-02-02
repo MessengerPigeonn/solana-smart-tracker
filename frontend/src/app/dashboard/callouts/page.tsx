@@ -92,7 +92,7 @@ export default function CalloutsPage() {
       </div>
 
       {/* Signal type filter */}
-      <div className="flex gap-1 border-b pb-2">
+      <div className="flex gap-1 border-b border-border/30 pb-2">
         {filterButtons.map((btn) => (
           <Button
             key={btn.key}

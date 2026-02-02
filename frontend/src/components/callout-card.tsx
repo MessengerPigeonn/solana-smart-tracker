@@ -46,8 +46,16 @@ export function CalloutCard({
   // Confidence score bar width
   const scoreWidth = Math.min(Math.max(score, 0), 100);
 
+  // Gradient score bar color
+  const scoreBarClass =
+    score >= 65
+      ? "bg-gradient-to-r from-teal to-green-500"
+      : score >= 45
+        ? "bg-gradient-to-r from-yellow-500 to-amber-500"
+        : "bg-gradient-to-r from-red-500 to-red-400";
+
   return (
-    <Card>
+    <Card className="glass-card">
       <CardContent className="pt-4">
         <div className="flex items-start justify-between mb-2">
           <div className="flex items-center gap-2">
@@ -70,9 +78,7 @@ export function CalloutCard({
           </div>
           <div className="h-1.5 bg-muted rounded-full overflow-hidden">
             <div
-              className={`h-full rounded-full transition-all ${
-                score >= 65 ? "bg-green-500" : score >= 45 ? "bg-yellow-500" : "bg-red-500"
-              }`}
+              className={`h-full rounded-full transition-all ${scoreBarClass}`}
               style={{ width: `${scoreWidth}%` }}
             />
           </div>

@@ -93,10 +93,10 @@ export function CalloutFeed({ initialCallouts, enableSSE, signalFilter }: Callou
         <div className="flex items-center gap-2 text-sm">
           <span
             className={`h-2 w-2 rounded-full ${
-              connected ? "bg-green-500" : "bg-red-500"
+              connected ? "bg-primary animate-blink" : "bg-red-500"
             }`}
           />
-          <span className="text-muted-foreground">
+          <span className={connected ? "text-primary" : "text-muted-foreground"}>
             {connected ? "Live" : "Disconnected"}
           </span>
         </div>

@@ -31,8 +31,8 @@ export function PricingCard({
   return (
     <Card
       className={cn(
-        "flex flex-col",
-        highlighted && "border-primary shadow-lg shadow-primary/10"
+        "flex flex-col glass-card",
+        highlighted && "border-primary/50 glow-primary-sm"
       )}
     >
       <CardHeader>
@@ -57,7 +57,7 @@ export function PricingCard({
       <CardFooter>
         <Button
           className="w-full"
-          variant={highlighted ? "default" : "outline"}
+          variant={highlighted ? "gradient" : "outline"}
           asChild
         >
           <Link href={href}>{cta}</Link>

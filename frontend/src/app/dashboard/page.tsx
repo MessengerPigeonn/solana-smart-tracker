@@ -85,7 +85,7 @@ export default function DashboardOverview() {
 
       {/* Active signals */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-        <Card>
+        <Card className="border-t-2 border-t-primary/20">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-muted-foreground">
               Tokens Tracked
@@ -95,7 +95,7 @@ export default function DashboardOverview() {
             <p className="text-2xl font-bold">{totalTokens}</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-t-2 border-t-primary/20">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-muted-foreground">
               BUY Signals
@@ -105,7 +105,7 @@ export default function DashboardOverview() {
             <p className="text-2xl font-bold text-green-500">{buySignals}</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-t-2 border-t-primary/20">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-muted-foreground">
               WATCH Signals
@@ -115,7 +115,7 @@ export default function DashboardOverview() {
             <p className="text-2xl font-bold text-yellow-500">{watchSignals}</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-t-2 border-t-primary/20">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-muted-foreground">
               SELL Signals
@@ -125,7 +125,7 @@ export default function DashboardOverview() {
             <p className="text-2xl font-bold text-red-500">{sellSignals}</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-t-2 border-t-primary/20">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-muted-foreground">
               PrintScan Alerts
@@ -135,7 +135,7 @@ export default function DashboardOverview() {
             <p className="text-2xl font-bold text-purple-400">{printScanAlerts}</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-t-2 border-t-primary/20">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-muted-foreground">
               Smart Wallets
@@ -150,7 +150,7 @@ export default function DashboardOverview() {
       {/* Scanner health */}
       {lastScan && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <span className="h-2 w-2 rounded-full bg-green-500" />
+          <span className="h-2 w-2 rounded-full bg-primary animate-blink" />
           <span>
             Last scan: {lastScan.toLocaleTimeString()} &mdash; {totalTokens} tokens tracked &mdash; {smartWalletCount} smart wallets identified
           </span>
@@ -159,7 +159,7 @@ export default function DashboardOverview() {
 
       <div className="grid md:grid-cols-2 gap-6">
         {/* Top movers (1h) */}
-        <Card>
+        <Card className="glass-card">
           <CardHeader>
             <CardTitle>Top Movers (1h)</CardTitle>
           </CardHeader>
@@ -170,7 +170,7 @@ export default function DashboardOverview() {
               topMovers.map((t) => (
                 <div
                   key={t.address}
-                  className="flex items-center justify-between border-b pb-2 last:border-0"
+                  className="flex items-center justify-between border-b border-border/30 pb-2 last:border-0"
                 >
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{t.symbol}</span>
@@ -191,7 +191,7 @@ export default function DashboardOverview() {
         </Card>
 
         {/* Recent callouts with live price delta */}
-        <Card>
+        <Card className="glass-card">
           <CardHeader>
             <CardTitle>Recent Callouts</CardTitle>
           </CardHeader>
@@ -210,7 +210,7 @@ export default function DashboardOverview() {
                 return (
                   <div
                     key={c.id}
-                    className="flex items-center justify-between border-b pb-2 last:border-0"
+                    className="flex items-center justify-between border-b border-border/30 pb-2 last:border-0"
                   >
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{c.token_symbol}</span>
@@ -253,7 +253,7 @@ export default function DashboardOverview() {
       </div>
 
       {/* Top smart money tokens */}
-      <Card>
+      <Card className="glass-card">
         <CardHeader>
           <CardTitle>Top Smart Money Tokens</CardTitle>
         </CardHeader>
@@ -265,7 +265,7 @@ export default function DashboardOverview() {
               tokens.map((t) => (
                 <div
                   key={t.address}
-                  className="flex items-center justify-between border-b pb-2 last:border-0"
+                  className="flex items-center justify-between border-b border-border/30 pb-2 last:border-0"
                 >
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{t.symbol}</span>

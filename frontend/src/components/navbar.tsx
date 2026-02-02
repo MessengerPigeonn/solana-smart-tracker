@@ -17,10 +17,10 @@ export function Navbar() {
   const isDashboard = pathname?.startsWith("/dashboard");
 
   return (
-    <header className="sticky top-0 z-50 border-b border-border/40 bg-background/80 backdrop-blur-sm">
+    <header className="sticky top-0 z-50 border-b border-border/30 bg-background/60 backdrop-blur-md">
       <div className="container mx-auto flex h-14 items-center justify-between px-4">
         <Link href="/" className="flex items-center gap-2 font-bold text-lg">
-          <span className="text-primary">Sol</span>
+          <span className="text-gradient">Sol</span>
           <span>Tracker</span>
         </Link>
 
@@ -52,7 +52,7 @@ export function Navbar() {
               <Button variant="ghost" size="sm" asChild>
                 <Link href="/login">Login</Link>
               </Button>
-              <Button size="sm" asChild>
+              <Button variant="gradient" size="sm" asChild>
                 <Link href="/signup">Get Started</Link>
               </Button>
             </>

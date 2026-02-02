@@ -18,7 +18,7 @@ export function WalletCard({
   onViewAnalytics,
 }: WalletCardProps) {
   return (
-    <Card>
+    <Card className="glass-card">
       <CardContent className="pt-4 flex items-center justify-between">
         <div>
           <p className="font-medium">{label}</p>
@@ -30,6 +30,7 @@ export function WalletCard({
           <Button
             size="sm"
             variant="outline"
+            className="hover:border-primary/50"
             onClick={() => onViewAnalytics(walletAddress)}
           >
             Analytics

@@ -24,7 +24,7 @@ interface OverlapTableProps {
 
 export function OverlapTable({ overlaps }: OverlapTableProps) {
   return (
-    <div className="rounded-md border overflow-auto">
+    <div className="rounded-md border border-border/50 overflow-auto">
       <Table>
         <TableHeader>
           <TableRow>

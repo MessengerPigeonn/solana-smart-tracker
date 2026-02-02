@@ -92,7 +92,7 @@ function ExpandedRow({ token }: { token: Token }) {
   const isPrintScan = token.scan_source === "print_scan";
 
   return (
-    <TableRow className="bg-muted/30">
+    <TableRow className="bg-accent/30">
       <TableCell colSpan={13} className="py-3">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
           <div>
@@ -163,13 +163,18 @@ export function TokenTable({ tokens, onSort, sortBy, sortOrder }: TokenTableProp
         className="cursor-pointer hover:text-foreground select-none whitespace-nowrap"
         onClick={() => onSort(column)}
       >
-        {children} {isActive ? (sortOrder === "desc" ? "↓" : "↑") : ""}
+        {children}{" "}
+        {isActive ? (
+          <span className="text-primary">{sortOrder === "desc" ? "↓" : "↑"}</span>
+        ) : (
+          ""
+        )}
       </TableHead>
     );
   }
 
   return (
-    <div className="rounded-md border overflow-auto">
+    <div className="rounded-md border border-border/50 overflow-auto">
       <Table>
         <TableHeader>
           <TableRow>
@@ -204,7 +209,7 @@ export function TokenTable({ tokens, onSort, sortBy, sortOrder }: TokenTableProp
                 <>
                   <TableRow
                     key={token.address}
-                    className={`cursor-pointer hover:bg-muted/50 transition-colors ${
+                    className={`cursor-pointer hover:bg-primary/5 transition-colors ${
                       token.has_buy_signal ? "bg-green-500/5 border-l-2 border-l-green-500" : ""
                     }`}
                     onClick={() => setExpandedRow(isExpanded ? null : token.address)}

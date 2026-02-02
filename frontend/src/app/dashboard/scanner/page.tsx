@@ -140,14 +140,14 @@ export default function ScannerPage() {
               Updated {lastUpdated.toLocaleTimeString()}
             </span>
           )}
-          <Button variant="outline" size="sm" onClick={fetchTokens}>
+          <Button variant="outline" size="sm" className="hover:border-primary/50" onClick={fetchTokens}>
             Refresh
           </Button>
         </div>
       </div>
 
       {/* Filter tabs */}
-      <div className="flex gap-1 border-b pb-2">
+      <div className="flex gap-1 border-b border-border/30 pb-2">
         {tabs.map((tab) => (
           <Button
             key={tab.key}

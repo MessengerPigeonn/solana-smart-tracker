@@ -72,7 +72,7 @@ export default function SmartMoneyPage() {
       )}
 
       {/* Overlap finder */}
-      <Card>
+      <Card className="glass-card">
         <CardHeader>
           <CardTitle className="text-lg">Overlap Detection</CardTitle>
           <p className="text-sm text-muted-foreground">
@@ -105,7 +105,7 @@ export default function SmartMoneyPage() {
                   className="w-24"
                 />
               </div>
-              <Button type="submit" disabled={loading}>
+              <Button type="submit" variant="gradient" disabled={loading}>
                 {loading ? "Searching..." : "Find Overlaps"}
               </Button>
             </div>
@@ -123,7 +123,7 @@ export default function SmartMoneyPage() {
       )}
 
       {/* Top smart wallets */}
-      <Card>
+      <Card className="glass-card">
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle className="text-lg">Top Smart Wallets</CardTitle>
@@ -141,7 +141,7 @@ export default function SmartMoneyPage() {
               {topWallets.map((w) => (
                 <div
                   key={w.wallet}
-                  className="flex items-center justify-between border-b pb-2 last:border-0"
+                  className="flex items-center justify-between border-b border-border/30 pb-2 last:border-0"
                 >
                   <div>
                     <p className="font-mono text-sm">{w.wallet.slice(0, 12)}...</p>

@@ -122,7 +122,7 @@ export default function WalletsPage() {
       )}
 
       {/* Add wallet form */}
-      <Card>
+      <Card className="glass-card">
         <CardHeader>
           <CardTitle className="text-lg">Add Wallet</CardTitle>
         </CardHeader>
@@ -151,7 +151,7 @@ export default function WalletsPage() {
                 onChange={(e) => setNewLabel(e.target.value)}
               />
             </div>
-            <Button type="submit" disabled={adding}>
+            <Button type="submit" variant="gradient" disabled={adding}>
               {adding ? "Adding..." : "Add"}
             </Button>
           </form>
