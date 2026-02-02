@@ -44,9 +44,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-_origins = [settings.frontend_url, "http://localhost:3000", "http://localhost:3001"]
+_origins = [settings.frontend_url.rstrip("/"), "http://localhost:3000", "http://localhost:3001"]
 if settings.extra_cors_origins:
-    _origins.extend([o.strip() for o in settings.extra_cors_origins.split(",") if o.strip()])
+    _origins.extend([o.strip().rstrip("/") for o in settings.extra_cors_origins.split(",") if o.strip()])
+# Deduplicate
+_origins = list(dict.fromkeys(_origins))
+
+logger = logging.getLogger(__name__)
+logger.info("CORS allowed origins: %s", _origins)
 
 app.add_middleware(
     CORSMiddleware,
