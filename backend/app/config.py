@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     sol_treasury_wallet: str = ""
 
     frontend_url: str = "http://localhost:3000"
+    extra_cors_origins: str = ""  # comma-separated additional origins for production
 
     # Worker settings
     scan_interval_seconds: int = 60

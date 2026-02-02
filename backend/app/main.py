@@ -44,9 +44,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+_origins = [settings.frontend_url, "http://localhost:3000", "http://localhost:3001"]
+if settings.extra_cors_origins:
+    _origins.extend([o.strip() for o in settings.extra_cors_origins.split(",") if o.strip()])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_url, "http://localhost:3000", "http://localhost:3001"],
+    allow_origins=_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

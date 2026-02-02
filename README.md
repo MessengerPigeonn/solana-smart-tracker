@@ -167,6 +167,53 @@ docker compose up --build
 
 This starts PostgreSQL, the backend (port 8000), and frontend (port 3000).
 
+### Railway Deployment (Recommended)
+
+Deploy to [Railway](https://railway.app) for a fully managed cloud setup:
+
+1. **Create a Railway project** at [railway.app/new](https://railway.app/new)
+
+2. **Add PostgreSQL**
+   - Click "New" → "Database" → "PostgreSQL"
+   - Railway provisions the database automatically
+
+3. **Deploy the backend**
+   - Click "New" → "GitHub Repo" → select `solana-smart-tracker`
+   - Set **Root Directory** to `backend`
+   - Add environment variables:
+     ```
+     DATABASE_URL        → ${{Postgres.DATABASE_URL}}  (reference the Railway Postgres)
+     SECRET_KEY          → (generate a random string)
+     BIRDEYE_API_KEY     → (your Birdeye API key)
+     FRONTEND_URL        → (will set after frontend deploys)
+     EXTRA_CORS_ORIGINS  → (will set after frontend deploys)
+     PRINT_SCAN_ENABLED  → true
+     ```
+   - Railway auto-detects the Dockerfile and deploys
+
+4. **Deploy the frontend**
+   - Click "New" → "GitHub Repo" → select `solana-smart-tracker` again
+   - Set **Root Directory** to `frontend`
+   - Add build-time variable:
+     ```
+     NEXT_PUBLIC_API_URL → https://your-backend.up.railway.app
+     ```
+     (Use the backend's Railway-generated URL)
+
+5. **Update backend CORS**
+   - Go back to backend service settings
+   - Set `FRONTEND_URL` and `EXTRA_CORS_ORIGINS` to your frontend's Railway URL (e.g. `https://your-frontend.up.railway.app`)
+
+6. **Generate public domains**
+   - For each service: Settings → Networking → "Generate Domain"
+
+7. **Create admin user** (optional)
+   - Use the Railway CLI or connect to the Postgres instance to run:
+     ```sql
+     INSERT INTO users (id, email, password_hash, tier)
+     VALUES (gen_random_uuid(), 'admin@example.com', '<bcrypt_hash>', 'legend');
+     ```
+
 ## API Endpoints
 
 | Method | Path | Description |
