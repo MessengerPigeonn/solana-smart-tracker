@@ -1,0 +1,9 @@
+.env
+.env.*
+*.db
+*.db-journal
+__pycache__
+venv
+.venv
+.git
+railway.toml
