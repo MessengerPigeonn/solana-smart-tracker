@@ -1,0 +1,80 @@
+from __future__ import annotations
+import stripe
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.config import get_settings
+from app.database import get_db
+from app.models.user import User
+from app.middleware.auth import get_current_user
+from app.services.stripe_service import create_checkout_session, handle_checkout_completed
+from app.services.sol_payments import verify_sol_payment
+
+settings = get_settings()
+router = APIRouter(prefix="/api/payments", tags=["payments"])
+
+
+class CheckoutRequest(BaseModel):
+    tier: str  # "pro" or "legend"
+
+
+class SolVerifyRequest(BaseModel):
+    tx_signature: str
+    tier: str  # "pro" or "legend"
+
+
+@router.post("/stripe/checkout")
+async def stripe_checkout(
+    req: CheckoutRequest,
+    user: User = Depends(get_current_user),
+):
+    if req.tier not in ("pro", "legend"):
+        raise HTTPException(status_code=400, detail="Invalid tier")
+
+    try:
+        url = await create_checkout_session(user, req.tier)
+        return {"checkout_url": url}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/stripe/webhook")
+async def stripe_webhook(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    payload = await request.body()
+    sig_header = request.headers.get("stripe-signature")
+
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, settings.stripe_webhook_secret
+        )
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid payload")
+    except stripe.error.SignatureVerificationError:
+        raise HTTPException(status_code=400, detail="Invalid signature")
+
+    if event["type"] == "checkout.session.completed":
+        await handle_checkout_completed(db, event["data"]["object"])
+
+    return {"status": "ok"}
+
+
+@router.post("/sol/verify")
+async def sol_verify(
+    req: SolVerifyRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if req.tier not in ("pro", "legend"):
+        raise HTTPException(status_code=400, detail="Invalid tier")
+
+    success = await verify_sol_payment(db, user, req.tx_signature, req.tier)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Payment verification failed. Ensure you sent the correct amount to the treasury wallet.",
+        )
+
+    return {"status": "activated", "tier": req.tier}
