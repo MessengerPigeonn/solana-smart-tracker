@@ -5,8 +5,11 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.database import get_db
-from app.models.user import User
+from app.models.user import User, Tier
 from app.middleware.auth import get_current_user
+
+TIER_LEVEL = {Tier.free: 0, Tier.pro: 1, Tier.legend: 2}
+REQUESTED_TIER = {"pro": Tier.pro, "legend": Tier.legend}
 from app.services.stripe_service import (
     create_checkout_session,
     handle_checkout_completed,
@@ -36,6 +39,13 @@ async def stripe_checkout(
 ):
     if req.tier not in ("pro", "legend"):
         raise HTTPException(status_code=400, detail="Invalid tier")
+
+    requested = REQUESTED_TIER[req.tier]
+    if TIER_LEVEL[user.tier] >= TIER_LEVEL[requested]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"You already have {user.tier.value} tier. You can only upgrade to a higher tier.",
+        )
 
     try:
         url = await create_checkout_session(user, req.tier)
@@ -108,6 +118,13 @@ async def sol_verify(
 ):
     if req.tier not in ("pro", "legend"):
         raise HTTPException(status_code=400, detail="Invalid tier")
+
+    requested = REQUESTED_TIER[req.tier]
+    if TIER_LEVEL[user.tier] >= TIER_LEVEL[requested]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"You already have {user.tier.value} tier. You can only upgrade to a higher tier.",
+        )
 
     success = await verify_sol_payment(db, user, req.tx_signature, req.tier)
     if not success:

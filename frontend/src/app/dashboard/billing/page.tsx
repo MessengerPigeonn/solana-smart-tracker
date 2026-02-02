@@ -48,7 +48,8 @@ export default function BillingPage() {
     fetchSubscription();
   }, [fetchSubscription]);
 
-  const handleStripeCheckout = async () => {
+  const handleStripeCheckout = async (tierOverride?: "pro" | "legend") => {
+    const tier = tierOverride ?? selectedTier;
     setCheckoutLoading(true);
     try {
       const data = await apiFetch<{ checkout_url: string }>(
@@ -56,7 +57,7 @@ export default function BillingPage() {
         {
           method: "POST",
           requireAuth: true,
-          body: JSON.stringify({ tier: selectedTier }),
+          body: JSON.stringify({ tier }),
         }
       );
       window.location.href = data.checkout_url;
@@ -97,6 +98,7 @@ export default function BillingPage() {
   }
 
   const isActive = sub && sub.tier !== "free" && sub.expires;
+  const isLegend = sub?.tier === "legend";
   const expiryDate = sub?.expires ? new Date(sub.expires) : null;
   const daysLeft = expiryDate
     ? Math.ceil(
@@ -127,68 +129,119 @@ export default function BillingPage() {
 
       {isActive ? (
         /* ── Active Subscriber View ── */
-        <Card className="glass-card">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-3">
-              Subscription
-              <Badge variant="teal" className="capitalize">
-                {sub.tier}
-              </Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <p className="text-muted-foreground">Status</p>
-                <p className="font-medium text-green-400">Active</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Expires</p>
-                <p className="font-medium">
-                  {expiryDate?.toLocaleDateString("en-US", {
-                    year: "numeric",
-                    month: "long",
-                    day: "numeric",
-                  })}
-                </p>
-              </div>
-              {sub.stripe_subscription_id && (
+        <div className="space-y-6">
+          <Card className="glass-card">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-3">
+                Subscription
+                <Badge variant="teal" className="capitalize">
+                  {sub.tier}
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <p className="text-muted-foreground">Renewal</p>
-                  <p className="font-medium text-primary">Auto-renewing</p>
+                  <p className="text-muted-foreground">Status</p>
+                  <p className="font-medium text-green-400">Active</p>
                 </div>
-              )}
-              {!sub.stripe_subscription_id && nearExpiry && (
-                <div className="col-span-2">
-                  <p className="text-sm text-yellow-400">
-                    Your subscription expires in {daysLeft} day
-                    {daysLeft !== 1 ? "s" : ""}. Renew below.
+                <div>
+                  <p className="text-muted-foreground">Expires</p>
+                  <p className="font-medium">
+                    {expiryDate?.toLocaleDateString("en-US", {
+                      year: "numeric",
+                      month: "long",
+                      day: "numeric",
+                    })}
                   </p>
                 </div>
-              )}
-            </div>
-
-            <div className="flex gap-3 pt-2">
-              {sub.has_stripe && sub.stripe_subscription_id && (
-                <Button
-                  variant="outline"
-                  onClick={handlePortal}
-                  disabled={portalLoading}
-                >
-                  {portalLoading ? "Opening..." : "Manage Subscription"}
-                </Button>
-              )}
-            </div>
-
-            {/* SOL renewal for non-Stripe subscribers nearing expiry */}
-            {!sub.stripe_subscription_id && nearExpiry && (
-              <div className="pt-4 border-t border-border/30">
-                <p className="text-sm font-medium mb-3">Renew with SOL</p>
-                <SolPayment tier={sub.tier as "pro" | "legend"} onSuccess={handleSolSuccess} />
+                {sub.stripe_subscription_id && (
+                  <div>
+                    <p className="text-muted-foreground">Renewal</p>
+                    <p className="font-medium text-primary">Auto-renewing</p>
+                  </div>
+                )}
+                {!sub.stripe_subscription_id && nearExpiry && (
+                  <div className="col-span-2">
+                    <p className="text-sm text-yellow-400">
+                      Your subscription expires in {daysLeft} day
+                      {daysLeft !== 1 ? "s" : ""}. Renew below.
+                    </p>
+                  </div>
+                )}
               </div>
-            )}
-          </CardContent>
-        </Card>
+
+              <div className="flex gap-3 pt-2">
+                {sub.has_stripe && sub.stripe_subscription_id && (
+                  <Button
+                    variant="outline"
+                    onClick={handlePortal}
+                    disabled={portalLoading}
+                  >
+                    {portalLoading ? "Opening..." : "Manage Subscription"}
+                  </Button>
+                )}
+              </div>
+
+              {!sub.stripe_subscription_id && nearExpiry && (
+                <div className="pt-4 border-t border-border/30">
+                  <p className="text-sm font-medium mb-3">Renew with SOL</p>
+                  <SolPayment tier={sub.tier as "pro" | "legend"} onSuccess={handleSolSuccess} />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Upgrade option for Pro users */}
+          {sub.tier === "pro" && (
+            <Card className="glass-card border-primary/30">
+              <CardHeader>
+                <CardTitle className="text-lg">Upgrade to Legend</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="rounded-lg border border-border/50 bg-card/50 p-4 space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Price</span>
+                    <span className="font-bold">$149/mo <span className="font-normal text-muted-foreground">or 5 SOL</span></span>
+                  </div>
+                  <ul className="text-xs text-muted-foreground space-y-1 pt-1">
+                    <li>Track 50 wallets (up from 10)</li>
+                    <li>Full trade history + patterns</li>
+                    <li>Top smart wallets list</li>
+                    <li>Priority support</li>
+                  </ul>
+                </div>
+                <Tabs defaultValue="card">
+                  <TabsList className="w-full">
+                    <TabsTrigger value="card" className="flex-1">Card</TabsTrigger>
+                    <TabsTrigger value="sol" className="flex-1">SOL</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="card">
+                    <Button
+                      variant="gradient"
+                      className="w-full"
+                      onClick={() => handleStripeCheckout("legend")}
+                      disabled={checkoutLoading}
+                    >
+                      {checkoutLoading ? "Redirecting to Stripe..." : "Upgrade to Legend — $149/mo"}
+                    </Button>
+                  </TabsContent>
+                  <TabsContent value="sol">
+                    <SolPayment tier="legend" onSuccess={handleSolSuccess} />
+                  </TabsContent>
+                </Tabs>
+              </CardContent>
+            </Card>
+          )}
+
+          {isLegend && (
+            <div className="text-center py-4">
+              <p className="text-sm text-muted-foreground">
+                You&apos;re on the highest tier. You have access to all features.
+              </p>
+            </div>
+          )}
+        </div>
       ) : (
         /* ── Free Tier / New Checkout View ── */
         <div className="space-y-6">
@@ -285,7 +338,7 @@ export default function BillingPage() {
                   <Button
                     variant="gradient"
                     className="w-full"
-                    onClick={handleStripeCheckout}
+                    onClick={() => handleStripeCheckout()}
                     disabled={checkoutLoading}
                   >
                     {checkoutLoading
