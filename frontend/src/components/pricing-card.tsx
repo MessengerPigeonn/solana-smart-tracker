@@ -13,6 +13,7 @@ interface PricingCardProps {
   name: string;
   price: string;
   period: string;
+  subtitle?: string;
   features: string[];
   cta: string;
   href: string;
@@ -23,6 +24,7 @@ export function PricingCard({
   name,
   price,
   period,
+  subtitle,
   features,
   cta,
   href,
@@ -43,6 +45,9 @@ export function PricingCard({
             <span className="text-muted-foreground text-sm">{period}</span>
           )}
         </div>
+        {subtitle && (
+          <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
+        )}
       </CardHeader>
       <CardContent className="flex-1">
         <ul className="space-y-2 text-sm">

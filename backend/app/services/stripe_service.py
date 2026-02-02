@@ -10,24 +10,72 @@ from app.models.payment import Payment, PaymentMethod
 settings = get_settings()
 stripe.api_key = settings.stripe_secret_key
 
-TIER_PRICES = {
-    "pro": settings.stripe_pro_price_id,
-    "legend": settings.stripe_legend_price_id,
+# USD pricing in cents
+TIER_USD_CENTS = {
+    "pro": 4900,      # $49/month
+    "legend": 14900,   # $149/month
 }
+
+# Cache for auto-provisioned price IDs
+_price_cache: dict[str, str] = {}
+
+
+def _get_or_create_price(tier: str) -> str:
+    """Get existing price ID from config, or auto-create product + price in Stripe."""
+    # First check if explicit price IDs are configured
+    configured = {
+        "pro": settings.stripe_pro_price_id,
+        "legend": settings.stripe_legend_price_id,
+    }
+    if configured.get(tier):
+        return configured[tier]
+
+    # Check in-memory cache
+    if tier in _price_cache:
+        return _price_cache[tier]
+
+    # Search for existing product by metadata
+    products = stripe.Product.search(query=f"metadata['soltracker_tier']:'{tier}'")
+    if products.data:
+        product = products.data[0]
+        # Find active recurring price on this product
+        prices = stripe.Price.list(product=product.id, active=True, type="recurring")
+        if prices.data:
+            _price_cache[tier] = prices.data[0].id
+            return _price_cache[tier]
+    else:
+        # Create product
+        product = stripe.Product.create(
+            name=f"SolTracker {tier.capitalize()}",
+            description=f"SolTracker {tier.capitalize()} monthly subscription",
+            metadata={"soltracker_tier": tier},
+        )
+
+    # Create recurring price
+    amount = TIER_USD_CENTS.get(tier, 4900)
+    price = stripe.Price.create(
+        product=product.id,
+        unit_amount=amount,
+        currency="usd",
+        recurring={"interval": "month"},
+    )
+    _price_cache[tier] = price.id
+    return price.id
 
 
 async def create_checkout_session(user: User, tier: str) -> str:
     """Create a Stripe checkout session and return the URL."""
-    price_id = TIER_PRICES.get(tier)
-    if not price_id:
+    if tier not in TIER_USD_CENTS:
         raise ValueError(f"Invalid tier: {tier}")
+
+    price_id = _get_or_create_price(tier)
 
     params: dict = {
         "payment_method_types": ["card"],
         "line_items": [{"price": price_id, "quantity": 1}],
         "mode": "subscription",
         "success_url": f"{settings.frontend_url}/dashboard/billing?payment=success",
-        "cancel_url": f"{settings.frontend_url}/pricing?payment=cancelled",
+        "cancel_url": f"{settings.frontend_url}/dashboard/billing?payment=cancelled",
         "metadata": {"user_id": user.id, "tier": tier},
         "subscription_data": {
             "metadata": {"user_id": user.id, "tier": tier},
@@ -74,7 +122,6 @@ async def handle_checkout_completed(
             sub.current_period_end, tz=timezone.utc
         )
     else:
-        # Fallback — shouldn't happen with mode="subscription"
         from datetime import timedelta
         user.subscription_expires = datetime.now(timezone.utc) + timedelta(days=30)
 
@@ -91,7 +138,6 @@ async def handle_checkout_completed(
 
 async def handle_invoice_paid(db: AsyncSession, invoice_data: dict) -> None:
     """Handle invoice.payment_succeeded webhook for subscription renewals."""
-    # Skip initial subscription creation — already handled by checkout.session.completed
     if invoice_data.get("billing_reason") == "subscription_create":
         return
 
@@ -106,13 +152,11 @@ async def handle_invoice_paid(db: AsyncSession, invoice_data: dict) -> None:
     if not user:
         return
 
-    # Retrieve subscription to get updated period end
     sub = stripe.Subscription.retrieve(subscription_id)
     user.subscription_expires = datetime.fromtimestamp(
         sub.current_period_end, tz=timezone.utc
     )
 
-    # Determine tier from subscription metadata or current user tier
     tier_str = sub.get("metadata", {}).get("tier", user.tier.value)
     tier = Tier.pro if tier_str == "pro" else Tier.legend
     user.tier = tier

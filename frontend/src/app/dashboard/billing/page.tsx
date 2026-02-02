@@ -21,6 +21,8 @@ export default function BillingPage() {
   const planParam = searchParams.get("plan");
   const paymentSuccess = searchParams.get("payment") === "success";
 
+  const paymentCancelled = searchParams.get("payment") === "cancelled";
+
   const [sub, setSub] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedTier, setSelectedTier] = useState<"pro" | "legend">(
@@ -115,6 +117,14 @@ export default function BillingPage() {
         </div>
       )}
 
+      {paymentCancelled && (
+        <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-4">
+          <p className="text-yellow-400 font-medium">
+            Payment cancelled. You can try again when you&apos;re ready.
+          </p>
+        </div>
+      )}
+
       {isActive ? (
         /* ── Active Subscriber View ── */
         <Card className="glass-card">
@@ -194,10 +204,13 @@ export default function BillingPage() {
             >
               <p className="font-bold text-lg">Pro</p>
               <p className="text-2xl font-bold mt-1">
-                1 SOL
+                $49
                 <span className="text-sm font-normal text-muted-foreground">
                   /month
                 </span>
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                or 1 SOL via wallet
               </p>
               <ul className="mt-3 space-y-1 text-xs text-muted-foreground">
                 <li>Unlimited scanner</li>
@@ -215,10 +228,13 @@ export default function BillingPage() {
             >
               <p className="font-bold text-lg">Legend</p>
               <p className="text-2xl font-bold mt-1">
-                5 SOL
+                $149
                 <span className="text-sm font-normal text-muted-foreground">
                   /month
                 </span>
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                or 5 SOL via wallet
               </p>
               <ul className="mt-3 space-y-1 text-xs text-muted-foreground">
                 <li>Everything in Pro</li>
@@ -241,10 +257,30 @@ export default function BillingPage() {
 
             <TabsContent value="card">
               <Card className="glass-card">
-                <CardContent className="pt-6">
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Subscribe with your credit or debit card via Stripe.
-                    Auto-renews monthly.
+                <CardContent className="pt-6 space-y-4">
+                  <div className="rounded-lg border border-border/50 bg-card/50 p-4 space-y-3">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Plan</span>
+                      <span className="capitalize font-medium">
+                        {selectedTier}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Price</span>
+                      <span className="font-bold text-lg">
+                        ${selectedTier === "pro" ? "49" : "149"}/mo
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Billing</span>
+                      <span className="text-primary font-medium">
+                        Auto-renewing monthly
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground text-center">
+                    Secure checkout via Stripe. Cancel anytime from your billing
+                    portal.
                   </p>
                   <Button
                     variant="gradient"
@@ -254,7 +290,7 @@ export default function BillingPage() {
                   >
                     {checkoutLoading
                       ? "Redirecting to Stripe..."
-                      : `Subscribe to ${selectedTier === "pro" ? "Pro" : "Legend"} with Card`}
+                      : `Subscribe to ${selectedTier === "pro" ? "Pro" : "Legend"} — $${selectedTier === "pro" ? "49" : "149"}/mo`}
                   </Button>
                 </CardContent>
               </Card>
