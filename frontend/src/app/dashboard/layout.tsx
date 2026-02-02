@@ -13,6 +13,7 @@ const navItems = [
   { href: "/dashboard/callouts", label: "Callouts" },
   { href: "/dashboard/wallets", label: "Wallets" },
   { href: "/dashboard/smart-money", label: "Smart Money" },
+  { href: "/dashboard/billing", label: "Billing" },
 ];
 
 export default function DashboardLayout({

@@ -7,7 +7,13 @@ from app.config import get_settings
 from app.database import get_db
 from app.models.user import User
 from app.middleware.auth import get_current_user
-from app.services.stripe_service import create_checkout_session, handle_checkout_completed
+from app.services.stripe_service import (
+    create_checkout_session,
+    handle_checkout_completed,
+    handle_invoice_paid,
+    handle_subscription_deleted,
+    create_billing_portal_session,
+)
 from app.services.sol_payments import verify_sol_payment
 
 settings = get_settings()
@@ -57,8 +63,41 @@ async def stripe_webhook(
 
     if event["type"] == "checkout.session.completed":
         await handle_checkout_completed(db, event["data"]["object"])
+    elif event["type"] == "invoice.payment_succeeded":
+        await handle_invoice_paid(db, event["data"]["object"])
+    elif event["type"] == "customer.subscription.deleted":
+        await handle_subscription_deleted(db, event["data"]["object"])
 
     return {"status": "ok"}
+
+
+@router.post("/stripe/portal")
+async def stripe_portal(
+    user: User = Depends(get_current_user),
+):
+    if not user.stripe_customer_id:
+        raise HTTPException(
+            status_code=400,
+            detail="No Stripe customer found. Subscribe with card first.",
+        )
+
+    try:
+        url = await create_billing_portal_session(user)
+        return {"portal_url": url}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/subscription")
+async def get_subscription(
+    user: User = Depends(get_current_user),
+):
+    return {
+        "tier": user.tier.value,
+        "expires": user.subscription_expires.isoformat() if user.subscription_expires else None,
+        "stripe_subscription_id": user.stripe_subscription_id,
+        "has_stripe": bool(user.stripe_customer_id),
+    }
 
 
 @router.post("/sol/verify")

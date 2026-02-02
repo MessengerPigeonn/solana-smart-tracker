@@ -36,7 +36,7 @@ export default function PricingPage() {
             "Smart money overlaps",
           ]}
           cta="Subscribe"
-          href="/signup"
+          href="/dashboard/billing?plan=pro"
           highlighted
         />
         <PricingCard
@@ -51,7 +51,7 @@ export default function PricingPage() {
             "Priority support",
           ]}
           cta="Subscribe"
-          href="/signup"
+          href="/dashboard/billing?plan=legend"
         />
       </div>
     </div>
