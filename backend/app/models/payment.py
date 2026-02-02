@@ -22,7 +22,7 @@ class Payment(Base):
     tier: Mapped[Tier] = mapped_column(SAEnum(Tier), nullable=False)
     tx_signature: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now(), nullable=False
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
     user = relationship("User", back_populates="payments")

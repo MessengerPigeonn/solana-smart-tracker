@@ -25,5 +25,5 @@ class Callout(Base):
     price_at_callout: Mapped[float] = mapped_column(Float, nullable=False)
     scan_source: Mapped[str] = mapped_column(String(20), default="trending")
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now(), nullable=False
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )

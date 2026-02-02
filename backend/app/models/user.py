@@ -23,10 +23,10 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     tier: Mapped[Tier] = mapped_column(SAEnum(Tier), default=Tier.free, nullable=False)
-    subscription_expires: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    subscription_expires: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     stripe_customer_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now(), nullable=False
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
     tracked_wallets = relationship("TrackedWallet", back_populates="user", cascade="all, delete-orphan")

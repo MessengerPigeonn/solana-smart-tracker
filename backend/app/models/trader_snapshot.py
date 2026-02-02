@@ -19,5 +19,5 @@ class TraderSnapshot(Base):
     trade_count_sell: Mapped[int] = mapped_column(Integer, default=0)
     estimated_pnl: Mapped[float] = mapped_column(Float, default=0.0)
     scanned_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now(), nullable=False
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )

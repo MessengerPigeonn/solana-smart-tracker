@@ -24,7 +24,7 @@ class ScannedToken(Base):
 
     # New fields for memecoin scanner overhaul
     token_type: Mapped[str] = mapped_column(String(20), default="unknown")  # memecoin / defi / stablecoin / unknown
-    created_at_chain: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, default=None)
+    created_at_chain: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
     buy_count_24h: Mapped[int] = mapped_column(Integer, default=0)
     sell_count_24h: Mapped[int] = mapped_column(Integer, default=0)
     unique_wallets_24h: Mapped[int] = mapped_column(Integer, default=0)
@@ -46,5 +46,5 @@ class ScannedToken(Base):
     rug_risk_score: Mapped[float] = mapped_column(Float, default=0.0)
 
     last_scanned: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
