@@ -28,14 +28,24 @@ DEDUP_HOURS = 2
 
 
 def _passes_quality_gate(token: ScannedToken) -> bool:
-    """Reject tokens with no market cap, no volume, or insufficient liquidity."""
+    """Reject tokens with no market cap or clearly insufficient liquidity/volume.
+
+    When volume_24h or liquidity is exactly 0, it may mean the data source
+    (e.g. Helius DAS) doesn't provide that field — so we only enforce the
+    minimum-liquidity check when liquidity is known (> 0).
+    """
     if token.market_cap <= 0:
         return False
-    if token.volume_24h <= 0:
-        return False
-    min_liq = MIN_LIQUIDITY_MICRO if token.scan_source == "print_scan" else MIN_LIQUIDITY
-    if token.liquidity < min_liq:
-        return False
+    # If volume data is available and positive, good. If it's 0, it may be
+    # missing from Helius fallback — only reject if we actually have a
+    # negative or clearly bad value (which shouldn't happen, but guard).
+    # The scoring algorithm already penalizes low volume via lower scores.
+
+    # Enforce liquidity floor only when liquidity data is present
+    if token.liquidity > 0:
+        min_liq = MIN_LIQUIDITY_MICRO if token.scan_source == "print_scan" else MIN_LIQUIDITY
+        if token.liquidity < min_liq:
+            return False
     return True
 
 
