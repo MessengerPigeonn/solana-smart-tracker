@@ -20,6 +20,7 @@ class CalloutResponse(BaseModel):
     liquidity: Optional[float] = None
     holder_count: Optional[int] = None
     rug_risk_score: Optional[float] = None
+    peak_market_cap: Optional[float] = None
     created_at: datetime
 
     @computed_field
@@ -33,3 +34,16 @@ class CalloutResponse(BaseModel):
 class CalloutListResponse(BaseModel):
     callouts: List[CalloutResponse]
     total: int
+
+
+class CalloutStatsResponse(BaseModel):
+    total_calls: int
+    avg_multiplier: Optional[float] = None
+    avg_ath_multiplier: Optional[float] = None
+    win_rate: Optional[float] = None
+    best_call_symbol: Optional[str] = None
+    best_call_address: Optional[str] = None
+    best_call_ath_multiplier: Optional[float] = None
+    buy_signals: int = 0
+    watch_signals: int = 0
+    sell_signals: int = 0

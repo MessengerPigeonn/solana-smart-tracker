@@ -26,6 +26,7 @@ interface CalloutCardProps {
   rugRiskScore?: number | null;
   dexscreenerUrl?: string;
   currentMarketCap?: number;
+  peakMarketCap?: number | null;
 }
 
 export function CalloutCard({
@@ -47,6 +48,7 @@ export function CalloutCard({
   rugRiskScore,
   dexscreenerUrl,
   currentMarketCap,
+  peakMarketCap,
 }: CalloutCardProps) {
   const [copied, setCopied] = useState(false);
 
@@ -70,6 +72,12 @@ export function CalloutCard({
   let multiplier: number | null = null;
   if (isOldEnough && marketCap && marketCap > 0 && currentMarketCap && currentMarketCap > 0) {
     multiplier = currentMarketCap / marketCap;
+  }
+
+  // ATH multiplier: peak mcap / mcap at callout
+  let athMultiplier: number | null = null;
+  if (marketCap && marketCap > 0 && peakMarketCap && peakMarketCap > 0) {
+    athMultiplier = peakMarketCap / marketCap;
   }
 
   // Confidence score bar width
@@ -140,19 +148,31 @@ export function CalloutCard({
           </a>
         </div>
 
-        {/* Multiplier badge */}
-        {multiplier !== null && (
-          <div className="mb-2">
-            <span
-              className={`inline-block text-sm font-bold px-2 py-0.5 rounded ${
-                multiplier >= 1
-                  ? "bg-green-500/10 text-green-500"
-                  : "bg-red-500/10 text-red-500"
-              }`}
-            >
-              {multiplier.toFixed(1)}x
-            </span>
-            <span className="text-xs text-muted-foreground ml-1.5">since callout</span>
+        {/* Multiplier badges */}
+        {(multiplier !== null || athMultiplier !== null) && (
+          <div className="flex items-center gap-3 mb-2">
+            {multiplier !== null && (
+              <div>
+                <span
+                  className={`inline-block text-sm font-bold px-2 py-0.5 rounded ${
+                    multiplier >= 1
+                      ? "bg-green-500/10 text-green-500"
+                      : "bg-red-500/10 text-red-500"
+                  }`}
+                >
+                  {multiplier.toFixed(1)}x
+                </span>
+                <span className="text-xs text-muted-foreground ml-1">now</span>
+              </div>
+            )}
+            {athMultiplier !== null && athMultiplier > 1 && (
+              <div>
+                <span className="inline-block text-sm font-bold px-2 py-0.5 rounded bg-amber-500/10 text-amber-400">
+                  {athMultiplier.toFixed(1)}x
+                </span>
+                <span className="text-xs text-muted-foreground ml-1">ATH</span>
+              </div>
+            )}
           </div>
         )}
 

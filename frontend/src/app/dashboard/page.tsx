@@ -216,6 +216,10 @@ export default function DashboardOverview() {
                 if (currentMcap && currentMcap > 0 && calloutMcap && calloutMcap > 0) {
                   multiplier = currentMcap / calloutMcap;
                 }
+                let athMultiplier: number | null = null;
+                if (calloutMcap && calloutMcap > 0 && c.peak_market_cap && c.peak_market_cap > 0) {
+                  athMultiplier = c.peak_market_cap / calloutMcap;
+                }
 
                 return (
                   <div
@@ -253,6 +257,11 @@ export default function DashboardOverview() {
                             }`}
                           >
                             {multiplier.toFixed(1)}x
+                          </span>
+                        )}
+                        {athMultiplier !== null && athMultiplier > 1 && (
+                          <span className="font-bold text-amber-400">
+                            ATH {athMultiplier.toFixed(1)}x
                           </span>
                         )}
                       </div>

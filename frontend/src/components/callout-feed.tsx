@@ -122,6 +122,7 @@ export function CalloutFeed({ initialCallouts, enableSSE, signalFilter }: Callou
             rugRiskScore={c.rug_risk_score}
             dexscreenerUrl={c.dexscreener_url}
             currentMarketCap={currentMarketCaps[c.token_address]}
+            peakMarketCap={c.peak_market_cap}
           />
         ))
       )}

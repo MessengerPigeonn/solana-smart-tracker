@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CalloutFeed } from "@/components/callout-feed";
+import { CalloutStatsBanner } from "@/components/callout-stats-banner";
 import { apiFetch } from "@/lib/api";
 import { getMe, type User } from "@/lib/auth";
 import { Bell, ArrowUpCircle, ArrowDownCircle, Eye } from "lucide-react";
@@ -88,6 +89,9 @@ export default function CalloutsPage() {
           <Eye className="h-3.5 w-3.5" /> {watches} WATCH
         </span>
       </div>
+
+      {/* Performance stats banner */}
+      <CalloutStatsBanner />
 
       {/* Signal type filter */}
       <div className="flex gap-1 border-b border-border/30 pb-2">

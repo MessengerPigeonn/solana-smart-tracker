@@ -14,6 +14,20 @@ export interface Callout {
   liquidity?: number | null;
   holder_count?: number | null;
   rug_risk_score?: number | null;
+  peak_market_cap?: number | null;
   dexscreener_url?: string;
   created_at: string;
+}
+
+export interface CalloutStats {
+  total_calls: number;
+  avg_multiplier?: number | null;
+  avg_ath_multiplier?: number | null;
+  win_rate?: number | null;
+  best_call_symbol?: string | null;
+  best_call_address?: string | null;
+  best_call_ath_multiplier?: number | null;
+  buy_signals: number;
+  watch_signals: number;
+  sell_signals: number;
 }
