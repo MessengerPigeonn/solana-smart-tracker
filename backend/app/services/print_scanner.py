@@ -5,7 +5,7 @@ from datetime import datetime, timezone, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.token import ScannedToken
-from app.services.birdeye import birdeye_client
+from app.services.data_provider import data_provider
 from app.services.scanner import (
     STABLECOIN_SYMBOLS,
     WRAPPED_SYMBOLS,
@@ -42,7 +42,7 @@ async def discover_new_listings(lookback_minutes: int = LISTING_LOOKBACK_MINUTES
     max_listing_time = int(now.timestamp())
 
     try:
-        tokens = await birdeye_client.get_new_listings(
+        tokens = await data_provider.get_new_listings(
             min_listing_time=min_listing_time,
             max_listing_time=max_listing_time,
             min_liquidity=PRINT_MIN_LIQUIDITY,
@@ -89,7 +89,7 @@ async def enrich_with_security(addresses: list[str]) -> dict[str, dict]:
 
     Returns {address: {has_mint_authority, has_freeze_authority, is_mutable, _raw: raw_api_data}}.
     """
-    security_batch = await birdeye_client.get_token_security_batch(addresses)
+    security_batch = await data_provider.get_token_security_batch(addresses)
     results = {}
 
     for address, sec in security_batch.items():
@@ -116,7 +116,7 @@ async def enrich_with_holders(addresses: list[str]) -> dict[str, dict]:
 
     for address in addresses:
         try:
-            holders = await birdeye_client.get_token_holders(address, limit=20)
+            holders = await data_provider.get_token_holders(address, limit=20)
             await asyncio.sleep(0.3)
         except Exception:
             continue

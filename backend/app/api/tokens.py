@@ -9,7 +9,7 @@ from app.models.token import ScannedToken
 from app.models.trader_snapshot import TraderSnapshot
 from app.schemas.token import TokenListItem, TokenListResponse, TokenDetail, TraderInfo
 from app.middleware.auth import get_optional_user
-from app.services.birdeye import birdeye_client
+from app.services.data_provider import data_provider
 
 router = APIRouter(prefix="/api/tokens", tags=["tokens"])
 
@@ -99,7 +99,7 @@ async def search_tokens(
     # If no local results and query looks like a ticker, try Birdeye
     if not tokens:
         try:
-            search_results = await birdeye_client.search_token(q)
+            search_results = await data_provider.search_token(q)
             items = []
             for sr in search_results[:limit]:
                 items.append(TokenListItem(

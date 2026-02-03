@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     scan_interval_seconds: int = 60
     callout_interval_seconds: int = 60
     birdeye_rate_limit: int = 5  # requests per second
+    helius_rate_limit: int = 5  # requests per second
     print_scan_interval_seconds: int = 15
     print_scan_enabled: bool = True
 

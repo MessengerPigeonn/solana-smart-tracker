@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.token import ScannedToken
 from app.models.trader_snapshot import TraderSnapshot
-from app.services.birdeye import birdeye_client
+from app.services.data_provider import data_provider
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +94,7 @@ async def discover_tokens(limit: int = 50) -> list[dict]:
     try:
         pages = (min(limit, 60) + 19) // 20  # up to 3 pages of 20
         for page in range(pages):
-            trending = await birdeye_client.get_trending_tokens(offset=page * 20, limit=20)
+            trending = await data_provider.get_trending_tokens(offset=page * 20, limit=20)
             if not trending:
                 break
             for t in trending:
@@ -111,7 +111,7 @@ async def discover_tokens(limit: int = 50) -> list[dict]:
 
     # Source 2: Volume-sorted tokens, filtered
     try:
-        volume_tokens = await birdeye_client.get_token_list(limit=limit)
+        volume_tokens = await data_provider.get_token_list(limit=limit)
         for t in volume_tokens:
             addr = t.get("address", "")
             if not addr or addr in seen_addresses:
@@ -136,7 +136,7 @@ async def enrich_tokens_with_overview(
     addresses = [t.get("address", "") for t in tokens if t.get("address")]
 
     # Batch fetch overviews
-    overviews = await birdeye_client.get_token_overview_batch(addresses)
+    overviews = await data_provider.get_token_overview_batch(addresses)
 
     scanned = []
     for t in tokens:
@@ -216,7 +216,7 @@ async def analyze_token_trades(
     """Fetch recent trades for a token and analyze whale activity.
     Returns analysis dict with buy/sell metrics."""
     try:
-        trades = await birdeye_client.get_token_trades(address=token_address, limit=50)
+        trades = await data_provider.get_token_trades(address=token_address, limit=50)
     except Exception as e:
         logger.warning(f"Failed to fetch trades for {token_address}: {e}")
         return {}
@@ -289,7 +289,7 @@ async def fetch_top_traders_for_token(
     snapshots = []
 
     for page in range(pages):
-        traders = await birdeye_client.get_top_traders(
+        traders = await data_provider.get_top_traders(
             address=token_address,
             offset=page * per_page,
             limit=per_page,
