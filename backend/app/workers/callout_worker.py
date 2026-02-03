@@ -11,6 +11,9 @@ from app.services.callout_engine import generate_callouts
 logger = logging.getLogger(__name__)
 
 
+MAX_PEAK_MULTIPLIER = 50  # reject peaks beyond 50x callout mcap
+
+
 async def _update_peak_market_caps(db):
     """Update peak_market_cap for recent callouts using current token data."""
     seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
@@ -32,18 +35,24 @@ async def _update_peak_market_caps(db):
     tokens_by_addr = {t.address: t for t in token_result.scalars().all()}
 
     updated = 0
+    corrected = 0
     for callout in callouts:
+        # Correct existing peaks that exceed the cap (clean up prior bad data)
+        if (callout.peak_market_cap
+                and callout.peak_market_cap > callout.market_cap * MAX_PEAK_MULTIPLIER):
+            callout.peak_market_cap = None
+            corrected += 1
+
         token = tokens_by_addr.get(callout.token_address)
         if not token or token.market_cap <= 0:
             continue
 
-        # Sanity check: reject absurd market caps (mcap/liquidity > 500x is bad data)
-        if token.liquidity > 0 and token.market_cap / token.liquidity > 500:
+        # Sanity check: reject absurd market caps (mcap/liquidity > 200x is bad data)
+        if token.liquidity > 0 and token.market_cap / token.liquidity > 200:
             continue
 
-        # Cap at 100x vs callout market cap to filter garbage data
         current_mcap = token.market_cap
-        if current_mcap > callout.market_cap * 100:
+        if current_mcap > callout.market_cap * MAX_PEAK_MULTIPLIER:
             continue
 
         old_peak = callout.peak_market_cap or 0
@@ -51,8 +60,10 @@ async def _update_peak_market_caps(db):
             callout.peak_market_cap = current_mcap
             updated += 1
 
-    if updated:
-        logger.info(f"Updated peak_market_cap for {updated} callouts")
+    if updated or corrected:
+        logger.info(
+            f"Peak market caps: {updated} updated, {corrected} corrected (reset bad data)"
+        )
 
 
 async def run_callout_worker():

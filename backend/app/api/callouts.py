@@ -96,17 +96,17 @@ async def callout_stats(
         if not c.market_cap or c.market_cap <= 0:
             continue
 
-        # Current multiplier (cap at 100x to filter garbage data)
+        # Current multiplier (cap at 50x to filter garbage data)
         token = tokens_by_addr.get(c.token_address)
         if token and token.market_cap > 0:
             mult = token.market_cap / c.market_cap
-            if mult <= 100:
+            if mult <= 50:
                 current_multipliers.append(mult)
 
-        # ATH multiplier (cap at 100x)
+        # ATH multiplier (cap at 50x)
         if c.peak_market_cap and c.peak_market_cap > 0:
             ath_mult = c.peak_market_cap / c.market_cap
-            if ath_mult <= 100:
+            if ath_mult <= 50:
                 ath_multipliers.append(ath_mult)
                 if ath_mult > best_ath:
                     best_ath = ath_mult
@@ -164,8 +164,8 @@ async def top_callout(
 
     for c in callouts:
         ath_mult = c.peak_market_cap / c.market_cap
-        # Filter garbage data (>100x is unreliable)
-        if ath_mult > 100:
+        # Filter garbage data (>50x is unreliable)
+        if ath_mult > 50:
             continue
         if ath_mult > best_ath_mult:
             best_ath_mult = ath_mult
@@ -179,7 +179,7 @@ async def top_callout(
     current_mult = None
     if current_mcap and best.market_cap > 0:
         m = current_mcap / best.market_cap
-        if m <= 100:
+        if m <= 50:
             current_mult = round(m, 2)
 
     return TopCalloutResponse(
