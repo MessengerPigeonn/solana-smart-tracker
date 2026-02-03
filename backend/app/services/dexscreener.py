@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 import logging
 import httpx
 from typing import Optional
@@ -119,6 +120,61 @@ class DexScreenerClient:
         if isinstance(data, list):
             return data
         return data.get("pairs", []) if isinstance(data, dict) else []
+
+    async def get_token_overview(self, address: str) -> dict | None:
+        """Fetch token overview via /token-pairs/v1/solana/{address}.
+
+        Returns dict normalized to Birdeye-compatible overview format with
+        volume, liquidity, price changes, and buy/sell counts.
+        Uses the highest-liquidity pair if multiple exist.
+        """
+        pairs = await self.get_token_pairs(address)
+        if not pairs:
+            return None
+
+        # Pick the pair with highest liquidity
+        best = max(pairs, key=lambda p: (p.get("liquidity", {}) or {}).get("usd", 0) if isinstance(p.get("liquidity"), dict) else 0)
+
+        base = best.get("baseToken", {})
+        liq_data = best.get("liquidity", {})
+        vol_data = best.get("volume", {})
+        price_change = best.get("priceChange", {})
+        txns = best.get("txns", {})
+        h24_txns = txns.get("h24", {})
+
+        liq = liq_data.get("usd", 0) if isinstance(liq_data, dict) else 0
+        vol = vol_data.get("h24", 0) if isinstance(vol_data, dict) else 0
+        mc = best.get("marketCap") or best.get("fdv") or 0
+
+        return {
+            "symbol": base.get("symbol", "???"),
+            "name": base.get("name", "Unknown"),
+            "price": float(best.get("priceUsd") or 0),
+            "marketCap": mc,
+            "liquidity": liq,
+            "v24hUSD": vol,
+            "priceChange5mPercent": price_change.get("m5", 0) or 0,
+            "priceChange1hPercent": price_change.get("h1", 0) or 0,
+            "priceChange24hPercent": price_change.get("h24", 0) or 0,
+            "buy24h": h24_txns.get("buys", 0) or 0,
+            "sell24h": h24_txns.get("sells", 0) or 0,
+            "uniqueWallet24h": 0,
+            # Creation timestamp
+            "createdAt": (best.get("pairCreatedAt", 0) or 0) / 1000 if best.get("pairCreatedAt") else 0,
+        }
+
+    async def get_token_overview_batch(self, addresses: list[str]) -> dict[str, dict]:
+        """Batch token overview via sequential get_token_overview calls."""
+        results = {}
+        for address in addresses:
+            try:
+                overview = await self.get_token_overview(address)
+                if overview:
+                    results[address] = overview
+                await asyncio.sleep(0.3)
+            except Exception:
+                continue
+        return results
 
     async def search_token(self, query: str) -> list[dict]:
         """Search for a token on DexScreener by address or name.

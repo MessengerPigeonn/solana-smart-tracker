@@ -111,10 +111,10 @@ class TokenDataProvider:
             logger.warning(f"DexScreener get_latest_token_profiles also failed: {e}")
             return []
 
-    # ── token overview (Birdeye → Helius) ──────────────────────────
+    # ── token overview (Birdeye → DexScreener → Helius) ────────────
 
     async def get_token_overview(self, address: str) -> Optional[dict]:
-        """Birdeye primary, Helius fallback (partial data — no price changes)."""
+        """Birdeye primary, DexScreener fallback (full data), Helius last resort."""
         if self._is_birdeye_healthy():
             try:
                 result = await birdeye_client.get_token_overview(address)
@@ -126,7 +126,15 @@ class TokenDataProvider:
                 else:
                     logger.warning(f"Birdeye get_token_overview failed for {address}: {e}")
 
-        # Fallback to Helius
+        # Fallback to DexScreener (has volume, liquidity, price changes)
+        try:
+            result = await dexscreener_client.get_token_overview(address)
+            if result:
+                return result
+        except Exception as e:
+            logger.warning(f"DexScreener get_token_overview failed for {address}: {e}")
+
+        # Last resort: Helius (no volume/liquidity/price changes)
         try:
             logger.info(f"Using Helius fallback for token overview: {address}")
             return await helius_client.get_token_overview(address)
@@ -135,7 +143,7 @@ class TokenDataProvider:
             return None
 
     async def get_token_overview_batch(self, addresses: list[str]) -> dict[str, dict]:
-        """Birdeye primary, Helius fallback for batch overview."""
+        """Birdeye primary, DexScreener fallback, Helius last resort for batch overview."""
         if self._is_birdeye_healthy():
             try:
                 result = await birdeye_client.get_token_overview_batch(addresses)
@@ -147,7 +155,16 @@ class TokenDataProvider:
                 else:
                     logger.warning(f"Birdeye get_token_overview_batch failed: {e}")
 
-        # Fallback to Helius
+        # Fallback to DexScreener (has volume, liquidity, price changes)
+        try:
+            logger.info(f"Using DexScreener fallback for batch overview ({len(addresses)} tokens)")
+            result = await dexscreener_client.get_token_overview_batch(addresses)
+            if result:
+                return result
+        except Exception as e:
+            logger.warning(f"DexScreener get_token_overview_batch failed: {e}")
+
+        # Last resort: Helius (no volume/liquidity/price changes)
         try:
             logger.info(f"Using Helius fallback for batch overview ({len(addresses)} tokens)")
             return await helius_client.get_token_overview_batch(addresses)
