@@ -8,6 +8,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { Check } from "lucide-react";
 
 interface PricingCardProps {
   name: string;
@@ -53,7 +54,7 @@ export function PricingCard({
         <ul className="space-y-2 text-sm">
           {features.map((feature) => (
             <li key={feature} className="flex items-start gap-2">
-              <span className="text-primary mt-0.5">&#10003;</span>
+              <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
               <span>{feature}</span>
             </li>
           ))}

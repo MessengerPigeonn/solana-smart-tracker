@@ -10,6 +10,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { TradingLinks } from "@/components/trading-links";
 import { formatCurrency, formatAddress, formatPercent } from "@/lib/utils";
 
 export interface Token {
@@ -93,7 +94,7 @@ function ExpandedRow({ token }: { token: Token }) {
 
   return (
     <TableRow className="bg-accent/30">
-      <TableCell colSpan={13} className="py-3">
+      <TableCell colSpan={14} className="py-3">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
           <div>
             <p className="text-muted-foreground">Type</p>
@@ -148,6 +149,9 @@ function ExpandedRow({ token }: { token: Token }) {
             </div>
           </div>
         )}
+        <div className="mt-3 pt-3 border-t border-border/50">
+          <TradingLinks tokenAddress={token.address} variant="expanded" />
+        </div>
       </TableCell>
     </TableRow>
   );
@@ -190,12 +194,13 @@ export function TokenTable({ tokens, onSort, sortBy, sortOrder }: TokenTableProp
             <SortableHeader column="smart_money_count">Smart $</SortableHeader>
             <SortableHeader column="rug_risk_score">Risk</SortableHeader>
             <TableHead>Age</TableHead>
+            <TableHead>Trade</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {tokens.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={12} className="text-center text-muted-foreground py-8">
+              <TableCell colSpan={14} className="text-center text-muted-foreground py-8">
                 No tokens found
               </TableCell>
             </TableRow>
@@ -264,6 +269,9 @@ export function TokenTable({ tokens, onSort, sortBy, sortOrder }: TokenTableProp
                     </TableCell>
                     <TableCell>
                       <TokenAge createdAt={token.created_at_chain} />
+                    </TableCell>
+                    <TableCell>
+                      <TradingLinks tokenAddress={token.address} variant="icon-only" />
                     </TableCell>
                   </TableRow>
                   {isExpanded && <ExpandedRow token={token} />}

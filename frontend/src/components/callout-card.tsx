@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { TradingLinks } from "@/components/trading-links";
 import { formatCurrency, formatAddress, formatPercent } from "@/lib/utils";
 
 interface CalloutCardProps {
@@ -55,7 +56,7 @@ export function CalloutCard({
         : "bg-gradient-to-r from-red-500 to-red-400";
 
   return (
-    <Card className="glass-card">
+    <Card className="glass-card card-hover">
       <CardContent className="pt-4">
         <div className="flex items-start justify-between mb-2">
           <div className="flex items-center gap-2">
@@ -103,6 +104,12 @@ export function CalloutCard({
             <span className="font-mono">{formatCurrency(currentPrice)}</span>
           </div>
         )}
+
+        {/* Quick Trade */}
+        <div className="mt-2 pt-2 border-t border-border/30 flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">Quick Trade</span>
+          <TradingLinks tokenAddress={tokenAddress} variant="compact" />
+        </div>
 
         {/* Smart wallet badges */}
         {smartWallets.length > 0 && (

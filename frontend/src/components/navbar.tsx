@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
 import { isAuthenticated, logout } from "@/lib/auth";
+import { Activity } from "lucide-react";
 
 export function Navbar() {
   const pathname = usePathname();
@@ -20,6 +21,7 @@ export function Navbar() {
     <header className="sticky top-0 z-50 border-b border-border/30 bg-background/60 backdrop-blur-md">
       <div className="container mx-auto flex h-14 items-center justify-between px-4">
         <Link href="/" className="flex items-center gap-2 font-bold text-lg">
+          <Activity className="h-5 w-5 text-primary" />
           <span className="text-gradient">Sol</span>
           <span>Tracker</span>
         </Link>

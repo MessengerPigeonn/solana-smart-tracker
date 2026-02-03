@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TokenTable, type Token } from "@/components/token-table";
 import { apiFetch } from "@/lib/api";
+import { Radar, RefreshCw, Search } from "lucide-react";
 
 type FilterTab = "all" | "trending" | "new" | "smart" | "print_scan";
 type McapFilter = "all" | "micro" | "small" | "medium";
@@ -133,14 +134,18 @@ export default function ScannerPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Token Scanner</h1>
+        <div className="flex items-center gap-2">
+          <Radar className="h-5 w-5 text-primary" />
+          <h1 className="text-2xl font-bold">Token Scanner</h1>
+        </div>
         <div className="flex items-center gap-3">
           {lastUpdated && (
             <span className="text-xs text-muted-foreground">
               Updated {lastUpdated.toLocaleTimeString()}
             </span>
           )}
-          <Button variant="outline" size="sm" className="hover:border-primary/50" onClick={fetchTokens}>
+          <Button variant="outline" size="sm" className="hover:border-primary/50 gap-1.5" onClick={fetchTokens}>
+            <RefreshCw className="h-3.5 w-3.5" />
             Refresh
           </Button>
         </div>
@@ -178,15 +183,18 @@ export default function ScannerPage() {
         ))}
       </div>
 
-      <Input
-        placeholder="Search by ticker or address..."
-        value={search}
-        onChange={(e) => {
-          setSearch(e.target.value);
-          setOffset(0);
-        }}
-        className="max-w-md"
-      />
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search by ticker or address..."
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setOffset(0);
+          }}
+          className="pl-9"
+        />
+      </div>
 
       {loading ? (
         <p className="text-muted-foreground">Loading tokens...</p>

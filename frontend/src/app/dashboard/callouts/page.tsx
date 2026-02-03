@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { CalloutFeed } from "@/components/callout-feed";
 import { apiFetch } from "@/lib/api";
 import { getMe, type User } from "@/lib/auth";
+import { Bell, ArrowUpCircle, ArrowDownCircle, Eye } from "lucide-react";
 
 interface Callout {
   id: number;
@@ -75,7 +76,10 @@ export default function CalloutsPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Callout Feed</h1>
+        <div className="flex items-center gap-2">
+          <Bell className="h-5 w-5 text-primary" />
+          <h1 className="text-2xl font-bold">Callout Feed</h1>
+        </div>
         {!isPro && (
           <p className="text-sm text-muted-foreground">
             Free tier: showing last 5 callouts with 5min delay.
@@ -86,9 +90,15 @@ export default function CalloutsPage() {
 
       {/* Signal counts */}
       <div className="flex gap-4 text-sm">
-        <span className="text-green-500 font-medium">{buys} BUY</span>
-        <span className="text-red-500 font-medium">{sells} SELL</span>
-        <span className="text-yellow-500 font-medium">{watches} WATCH</span>
+        <span className="flex items-center gap-1 text-green-500 font-medium">
+          <ArrowUpCircle className="h-3.5 w-3.5" /> {buys} BUY
+        </span>
+        <span className="flex items-center gap-1 text-red-500 font-medium">
+          <ArrowDownCircle className="h-3.5 w-3.5" /> {sells} SELL
+        </span>
+        <span className="flex items-center gap-1 text-yellow-500 font-medium">
+          <Eye className="h-3.5 w-3.5" /> {watches} WATCH
+        </span>
       </div>
 
       {/* Signal type filter */}

@@ -3,8 +3,17 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { TradingLinks } from "@/components/trading-links";
 import { apiFetch } from "@/lib/api";
 import { formatCurrency, formatPercent } from "@/lib/utils";
+import {
+  Coins,
+  ArrowUpCircle,
+  Eye,
+  ArrowDownCircle,
+  Printer,
+  Users,
+} from "lucide-react";
 
 interface Callout {
   id: number;
@@ -85,61 +94,67 @@ export default function DashboardOverview() {
 
       {/* Active signals */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-        <Card className="border-t-2 border-t-primary/20">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">
+        <Card className="glass-card card-hover group">
+          <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-sm text-muted-foreground font-normal">
               Tokens Tracked
             </CardTitle>
+            <Coins className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold">{totalTokens}</p>
           </CardContent>
         </Card>
-        <Card className="border-t-2 border-t-primary/20">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">
+        <Card className="glass-card card-hover group">
+          <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-sm text-muted-foreground font-normal">
               BUY Signals
             </CardTitle>
+            <ArrowUpCircle className="h-4 w-4 text-green-500/60 group-hover:text-green-500 transition-colors" />
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold text-green-500">{buySignals}</p>
           </CardContent>
         </Card>
-        <Card className="border-t-2 border-t-primary/20">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">
+        <Card className="glass-card card-hover group">
+          <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-sm text-muted-foreground font-normal">
               WATCH Signals
             </CardTitle>
+            <Eye className="h-4 w-4 text-yellow-500/60 group-hover:text-yellow-500 transition-colors" />
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold text-yellow-500">{watchSignals}</p>
           </CardContent>
         </Card>
-        <Card className="border-t-2 border-t-primary/20">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">
+        <Card className="glass-card card-hover group">
+          <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-sm text-muted-foreground font-normal">
               SELL Signals
             </CardTitle>
+            <ArrowDownCircle className="h-4 w-4 text-red-500/60 group-hover:text-red-500 transition-colors" />
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold text-red-500">{sellSignals}</p>
           </CardContent>
         </Card>
-        <Card className="border-t-2 border-t-primary/20">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">
+        <Card className="glass-card card-hover group">
+          <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-sm text-muted-foreground font-normal">
               PrintScan Alerts
             </CardTitle>
+            <Printer className="h-4 w-4 text-purple-400/60 group-hover:text-purple-400 transition-colors" />
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold text-purple-400">{printScanAlerts}</p>
           </CardContent>
         </Card>
-        <Card className="border-t-2 border-t-primary/20">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">
+        <Card className="glass-card card-hover group">
+          <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-sm text-muted-foreground font-normal">
               Smart Wallets
             </CardTitle>
+            <Users className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold text-primary">{smartWalletCount}</p>
@@ -159,7 +174,7 @@ export default function DashboardOverview() {
 
       <div className="grid md:grid-cols-2 gap-6">
         {/* Top movers (1h) */}
-        <Card className="glass-card">
+        <Card className="glass-card card-hover">
           <CardHeader>
             <CardTitle>Top Movers (1h)</CardTitle>
           </CardHeader>
@@ -177,6 +192,7 @@ export default function DashboardOverview() {
                     {t.token_type === "memecoin" && (
                       <Badge variant="outline" className="text-[10px] px-1 py-0">meme</Badge>
                     )}
+                    <TradingLinks tokenAddress={t.address} variant="icon-only" />
                   </div>
                   <div className="text-right text-sm">
                     <p>{formatCurrency(t.price)}</p>
@@ -191,7 +207,7 @@ export default function DashboardOverview() {
         </Card>
 
         {/* Recent callouts with live price delta */}
-        <Card className="glass-card">
+        <Card className="glass-card card-hover">
           <CardHeader>
             <CardTitle>Recent Callouts</CardTitle>
           </CardHeader>
@@ -230,6 +246,7 @@ export default function DashboardOverview() {
                           PRINT
                         </Badge>
                       )}
+                      <TradingLinks tokenAddress={c.token_address} variant="icon-only" />
                     </div>
                     <div className="text-right text-sm">
                       <p>{formatCurrency(c.price_at_callout)}</p>
@@ -253,7 +270,7 @@ export default function DashboardOverview() {
       </div>
 
       {/* Top smart money tokens */}
-      <Card className="glass-card">
+      <Card className="glass-card card-hover">
         <CardHeader>
           <CardTitle>Top Smart Money Tokens</CardTitle>
         </CardHeader>

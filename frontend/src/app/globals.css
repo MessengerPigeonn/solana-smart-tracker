@@ -104,6 +104,18 @@
   .bg-gradient-primary {
     background-image: linear-gradient(135deg, #24dbc9, #3dd6f5);
   }
+
+  .card-hover {
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  }
+  .card-hover:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 20px rgba(36, 219, 201, 0.06);
+  }
+
+  .pulse-live {
+    animation: pulse-live 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
 }
 
 /* Keyframe animations */
@@ -132,6 +144,21 @@
   50% {
     opacity: 0.3;
   }
+}
+
+@keyframes pulse-live {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 /* Custom scrollbar */

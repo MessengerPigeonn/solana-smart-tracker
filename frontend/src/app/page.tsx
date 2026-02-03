@@ -1,30 +1,67 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { PricingCard } from "@/components/pricing-card";
+import {
+  Radar,
+  Bell,
+  Wallet,
+  GitMerge,
+  ArrowRight,
+  ShieldCheck,
+  Zap,
+  BarChart3,
+} from "lucide-react";
 
 export default function LandingPage() {
   return (
     <div className="flex flex-col">
       {/* Hero */}
       <section className="relative overflow-hidden border-b border-border/30">
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            background: "radial-gradient(ellipse at 50% 0%, rgba(36,219,201,0.08) 0%, transparent 70%)",
-          }}
-        />
-        <div className="container mx-auto px-4 py-24 md:py-32 text-center relative z-10">
-          <h1 className="text-4xl md:text-6xl font-bold tracking-tight mb-6">
-            Track <span className="text-gradient">Smart Money</span> on Solana
+        <div className="absolute inset-0 pointer-events-none">
+          <div
+            className="absolute inset-0"
+            style={{
+              background:
+                "radial-gradient(ellipse at 30% 0%, rgba(36,219,201,0.12) 0%, transparent 50%)",
+            }}
+          />
+          <div
+            className="absolute inset-0"
+            style={{
+              background:
+                "radial-gradient(ellipse at 70% 100%, rgba(61,214,245,0.08) 0%, transparent 50%)",
+            }}
+          />
+        </div>
+        <div className="container mx-auto px-4 py-28 md:py-36 text-center relative z-10">
+          <Badge
+            variant="outline"
+            className="mb-6 px-4 py-1 text-xs animate-fade-in"
+          >
+            <Zap className="h-3 w-3 mr-1 text-primary" />
+            Now tracking 500+ Solana memecoins in real-time
+          </Badge>
+
+          <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight mb-6 animate-slide-up">
+            Track <span className="text-gradient">Smart Money</span>
+            <br />
+            on Solana
           </h1>
-          <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
+          <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-3 animate-slide-up">
             Real-time whale wallet tracking, automated buy/sell callouts, and
             smart money overlap detection for Solana memecoins.
           </p>
-          <div className="flex gap-4 justify-center">
-            <Button size="lg" variant="gradient" className="animate-pulse-glow" asChild>
-              <Link href="/signup">Start Free</Link>
+          <p className="text-sm text-muted-foreground/70 mb-8 animate-fade-in">
+            Built by a trader, for traders.
+          </p>
+          <div className="flex gap-4 justify-center animate-slide-up">
+            <Button size="lg" variant="gradient" className="glow-primary gap-2" asChild>
+              <Link href="/signup">
+                Start Free
+                <ArrowRight className="h-4 w-4" />
+              </Link>
             </Button>
             <Button size="lg" variant="outline" asChild>
               <Link href="/pricing">View Pricing</Link>
@@ -39,42 +76,67 @@ export default function LandingPage() {
           Everything you need to follow the whales
         </h2>
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <Card className="glass-card">
-            <CardHeader>
-              <CardTitle className="text-lg">Token Scanner</CardTitle>
-            </CardHeader>
-            <CardContent className="text-muted-foreground">
-              Real-time scanning of trending Solana tokens with volume, liquidity,
-              and smart money metrics.
-            </CardContent>
-          </Card>
-          <Card className="glass-card">
-            <CardHeader>
-              <CardTitle className="text-lg">Smart Callouts</CardTitle>
-            </CardHeader>
-            <CardContent className="text-muted-foreground">
-              Automated BUY/SELL/WATCH signals scored 0-100 based on whale wallet
-              activity and volume spikes.
-            </CardContent>
-          </Card>
-          <Card className="glass-card">
-            <CardHeader>
-              <CardTitle className="text-lg">Wallet Tracker</CardTitle>
-            </CardHeader>
-            <CardContent className="text-muted-foreground">
-              Track up to 50 whale wallets with full PnL analytics, trade history,
-              and behavioral patterns.
-            </CardContent>
-          </Card>
-          <Card className="glass-card">
-            <CardHeader>
-              <CardTitle className="text-lg">Overlap Detection</CardTitle>
-            </CardHeader>
-            <CardContent className="text-muted-foreground">
-              Find wallets trading across multiple tokens — the strongest signal
-              for coordinated smart money moves.
-            </CardContent>
-          </Card>
+          {[
+            {
+              icon: Radar,
+              title: "Token Scanner",
+              desc: "Real-time scanning of trending Solana tokens with volume, liquidity, and smart money metrics.",
+            },
+            {
+              icon: Bell,
+              title: "Smart Callouts",
+              desc: "Automated BUY/SELL/WATCH signals scored 0-100 based on whale wallet activity and volume spikes.",
+            },
+            {
+              icon: Wallet,
+              title: "Wallet Tracker",
+              desc: "Track up to 50 whale wallets with full PnL analytics, trade history, and behavioral patterns.",
+            },
+            {
+              icon: GitMerge,
+              title: "Overlap Detection",
+              desc: "Find wallets trading across multiple tokens — the strongest signal for coordinated smart money moves.",
+            },
+          ].map((feature) => (
+            <Card key={feature.title} className="glass-card card-hover group">
+              <CardHeader>
+                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center mb-3 group-hover:bg-primary/20 transition-colors">
+                  <feature.icon className="h-5 w-5 text-primary" />
+                </div>
+                <CardTitle className="text-lg">{feature.title}</CardTitle>
+              </CardHeader>
+              <CardContent className="text-muted-foreground">
+                {feature.desc}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </section>
+
+      {/* Why SolTracker */}
+      <section className="container mx-auto px-4 py-16">
+        <div className="grid md:grid-cols-3 gap-8 max-w-3xl mx-auto text-center">
+          {[
+            { icon: Zap, label: "Real-Time Data", sub: "10-15s scan intervals" },
+            {
+              icon: ShieldCheck,
+              label: "Rug Detection",
+              sub: "Automated risk scoring",
+            },
+            {
+              icon: BarChart3,
+              label: "Smart Analytics",
+              sub: "PnL tracking & win rates",
+            },
+          ].map((item) => (
+            <div key={item.label} className="flex flex-col items-center gap-2">
+              <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+                <item.icon className="h-6 w-6 text-primary" />
+              </div>
+              <p className="font-medium">{item.label}</p>
+              <p className="text-sm text-muted-foreground">{item.sub}</p>
+            </div>
+          ))}
         </div>
       </section>
 
@@ -136,7 +198,7 @@ export default function LandingPage() {
       {/* Footer */}
       <footer className="border-t border-border/30 py-8">
         <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
-          SolTracker &mdash; Smart money analysis for Solana memecoins.
+          SolTracker — Smart money analysis for Solana memecoins.
         </div>
       </footer>
     </div>
