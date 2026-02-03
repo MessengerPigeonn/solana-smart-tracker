@@ -17,10 +17,26 @@ SMART_MONEY_PNL_WEIGHT = 15
 TOKEN_FRESHNESS_WEIGHT = 10
 LIQUIDITY_SAFETY_WEIGHT = 10
 
-# Thresholds (lowered for pre-filtered memecoins)
-BUY_THRESHOLD = 65
-WATCH_THRESHOLD = 45
+# Thresholds (raised to reduce low-quality callouts)
+BUY_THRESHOLD = 75
+WATCH_THRESHOLD = 55
 MIN_LIQUIDITY = 5000
+MIN_LIQUIDITY_MICRO = 1000
+
+# Dedup window: suppress duplicate callouts for the same token
+DEDUP_HOURS = 2
+
+
+def _passes_quality_gate(token: ScannedToken) -> bool:
+    """Reject tokens with no market cap, no volume, or insufficient liquidity."""
+    if token.market_cap <= 0:
+        return False
+    if token.volume_24h <= 0:
+        return False
+    min_liq = MIN_LIQUIDITY_MICRO if token.scan_source == "print_scan" else MIN_LIQUIDITY
+    if token.liquidity < min_liq:
+        return False
+    return True
 
 
 def _score_micro_token(token: ScannedToken) -> tuple[float, str]:
@@ -234,7 +250,7 @@ async def score_token(db: AsyncSession, token: ScannedToken) -> tuple[float, str
 async def _check_sell_signals(db: AsyncSession) -> list[Callout]:
     """Check if tokens with previous BUY callouts now show heavy selling."""
     one_day_ago = datetime.now(timezone.utc) - timedelta(hours=24)
-    five_min_ago = datetime.now(timezone.utc) - timedelta(minutes=5)
+    dedup_cutoff = datetime.now(timezone.utc) - timedelta(hours=DEDUP_HOURS)
 
     # Find tokens that had BUY callouts in the last 24h
     result = await db.execute(
@@ -257,7 +273,7 @@ async def _check_sell_signals(db: AsyncSession) -> list[Callout]:
             select(Callout).where(
                 Callout.token_address == callout.token_address,
                 Callout.signal == Signal.sell,
-                Callout.created_at >= five_min_ago,
+                Callout.created_at >= dedup_cutoff,
             ).limit(1)
         )
         if recent_sell.scalars().first():
@@ -293,6 +309,12 @@ async def _check_sell_signals(db: AsyncSession) -> list[Callout]:
                 smart_wallets=callout.smart_wallets or [],
                 price_at_callout=token.price,
                 scan_source=token.scan_source or "trending",
+                token_name=token.name,
+                market_cap=token.market_cap,
+                volume_24h=token.volume_24h,
+                liquidity=token.liquidity,
+                holder_count=token.holder_count,
+                rug_risk_score=token.rug_risk_score,
                 created_at=datetime.now(timezone.utc),
             )
             db.add(sell_callout)
@@ -304,6 +326,7 @@ async def _check_sell_signals(db: AsyncSession) -> list[Callout]:
 async def generate_callouts(db: AsyncSession) -> list[Callout]:
     """Run scoring algorithm on all recently scanned tokens and generate callouts."""
     five_minutes_ago = datetime.now(timezone.utc) - timedelta(minutes=5)
+    dedup_cutoff = datetime.now(timezone.utc) - timedelta(hours=DEDUP_HOURS)
     result = await db.execute(
         select(ScannedToken).where(ScannedToken.last_scanned >= five_minutes_ago)
     )
@@ -311,16 +334,20 @@ async def generate_callouts(db: AsyncSession) -> list[Callout]:
 
     new_callouts = []
     for token in tokens:
+        # Quality gate: reject tokens with no mcap, no volume, or low liquidity
+        if not _passes_quality_gate(token):
+            continue
+
         score, reason, smart_wallets = await score_token(db, token)
 
         if score < WATCH_THRESHOLD:
             continue
 
-        # Check if we already have a recent callout for this token
+        # Check if we already have a recent callout for this token (2h dedup)
         recent = await db.execute(
             select(Callout).where(
                 Callout.token_address == token.address,
-                Callout.created_at >= five_minutes_ago,
+                Callout.created_at >= dedup_cutoff,
             ).limit(1)
         )
         if recent.scalars().first():
@@ -337,6 +364,12 @@ async def generate_callouts(db: AsyncSession) -> list[Callout]:
             smart_wallets=smart_wallets,
             price_at_callout=token.price,
             scan_source=token.scan_source or "trending",
+            token_name=token.name,
+            market_cap=token.market_cap,
+            volume_24h=token.volume_24h,
+            liquidity=token.liquidity,
+            holder_count=token.holder_count,
+            rug_risk_score=token.rug_risk_score,
             created_at=datetime.now(timezone.utc),
         )
         db.add(callout)

@@ -3,19 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { CalloutCard } from "./callout-card";
 import { getSSEUrl, apiFetch } from "@/lib/api";
-
-interface Callout {
-  id: number;
-  token_symbol: string;
-  token_address: string;
-  signal: string;
-  score: number;
-  reason: string;
-  smart_wallets: string[];
-  price_at_callout: number;
-  scan_source?: string;
-  created_at: string;
-}
+import type { Callout } from "@/lib/types";
 
 interface CalloutFeedProps {
   initialCallouts: Callout[];
@@ -27,27 +15,33 @@ export function CalloutFeed({ initialCallouts, enableSSE, signalFilter }: Callou
   const [callouts, setCallouts] = useState<Callout[]>(initialCallouts);
   const [connected, setConnected] = useState(false);
   const [currentPrices, setCurrentPrices] = useState<Record<string, number>>({});
+  const [currentMarketCaps, setCurrentMarketCaps] = useState<Record<string, number>>({});
   const eventSourceRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
     setCallouts(initialCallouts);
   }, [initialCallouts]);
 
-  // Fetch current prices for tokens that have callouts older than 5 min
+  // Fetch current prices and market caps for tokens that have callouts older than 5 min
   useEffect(() => {
     async function fetchPrices() {
       const addresses = Array.from(new Set(callouts.map((c) => c.token_address)));
       if (addresses.length === 0) return;
 
       try {
-        const data = await apiFetch<{ tokens: { address: string; price: number }[] }>(
+        const data = await apiFetch<{ tokens: { address: string; price: number; market_cap?: number }[] }>(
           `/api/tokens?limit=100`
         );
         const prices: Record<string, number> = {};
+        const mcaps: Record<string, number> = {};
         for (const t of data.tokens) {
           prices[t.address] = t.price;
+          if (t.market_cap) {
+            mcaps[t.address] = t.market_cap;
+          }
         }
         setCurrentPrices(prices);
+        setCurrentMarketCaps(mcaps);
       } catch {
         // ignore
       }
@@ -120,6 +114,14 @@ export function CalloutFeed({ initialCallouts, enableSSE, signalFilter }: Callou
             currentPrice={currentPrices[c.token_address]}
             scanSource={c.scan_source}
             createdAt={c.created_at}
+            tokenName={c.token_name}
+            marketCap={c.market_cap}
+            volume24h={c.volume_24h}
+            liquidity={c.liquidity}
+            holderCount={c.holder_count}
+            rugRiskScore={c.rug_risk_score}
+            dexscreenerUrl={c.dexscreener_url}
+            currentMarketCap={currentMarketCaps[c.token_address]}
           />
         ))
       )}

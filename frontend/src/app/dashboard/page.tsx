@@ -14,23 +14,13 @@ import {
   Printer,
   Users,
 } from "lucide-react";
-
-interface Callout {
-  id: number;
-  token_symbol: string;
-  token_address: string;
-  signal: string;
-  score: number;
-  reason: string;
-  price_at_callout: number;
-  scan_source?: string;
-  created_at: string;
-}
+import type { Callout } from "@/lib/types";
 
 interface TokenItem {
   address: string;
   symbol: string;
   price: number;
+  market_cap: number;
   volume_24h: number;
   smart_money_count: number;
   price_change_1h: number;
@@ -82,10 +72,14 @@ export default function DashboardOverview() {
   const printScanAlerts = callouts.filter((c) => c.scan_source === "print_scan").length;
   const smartWalletCount = tokens.reduce((sum, t) => sum + t.smart_money_count, 0);
 
-  // Current prices for callout performance
+  // Current prices and market caps for callout performance
   const priceMap: Record<string, number> = {};
+  const mcapMap: Record<string, number> = {};
   for (const t of [...tokens, ...topMovers]) {
     priceMap[t.address] = t.price;
+    if (t.market_cap) {
+      mcapMap[t.address] = t.market_cap;
+    }
   }
 
   return (
@@ -216,11 +210,11 @@ export default function DashboardOverview() {
               <p className="text-sm text-muted-foreground">No callouts yet</p>
             ) : (
               callouts.slice(0, 10).map((c) => {
-                const currentPrice = priceMap[c.token_address];
-                let delta: string | null = null;
-                if (currentPrice && c.price_at_callout > 0) {
-                  const pct = ((currentPrice - c.price_at_callout) / c.price_at_callout) * 100;
-                  delta = formatPercent(pct);
+                const currentMcap = mcapMap[c.token_address];
+                const calloutMcap = c.market_cap;
+                let multiplier: number | null = null;
+                if (currentMcap && currentMcap > 0 && calloutMcap && calloutMcap > 0) {
+                  multiplier = currentMcap / calloutMcap;
                 }
 
                 return (
@@ -252,11 +246,13 @@ export default function DashboardOverview() {
                       <p>{formatCurrency(c.price_at_callout)}</p>
                       <div className="flex items-center gap-2">
                         <span className="text-muted-foreground">Score: {c.score}</span>
-                        {delta && (
-                          <span className={
-                            delta.startsWith("+") ? "text-green-500 font-medium" : "text-red-500 font-medium"
-                          }>
-                            {delta}
+                        {multiplier !== null && (
+                          <span
+                            className={`font-bold ${
+                              multiplier >= 1 ? "text-green-500" : "text-red-500"
+                            }`}
+                          >
+                            {multiplier.toFixed(1)}x
                           </span>
                         )}
                       </div>

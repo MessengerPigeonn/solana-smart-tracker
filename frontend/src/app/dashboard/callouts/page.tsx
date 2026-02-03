@@ -6,19 +6,7 @@ import { CalloutFeed } from "@/components/callout-feed";
 import { apiFetch } from "@/lib/api";
 import { getMe, type User } from "@/lib/auth";
 import { Bell, ArrowUpCircle, ArrowDownCircle, Eye } from "lucide-react";
-
-interface Callout {
-  id: number;
-  token_symbol: string;
-  token_address: string;
-  signal: string;
-  score: number;
-  reason: string;
-  smart_wallets: string[];
-  price_at_callout: number;
-  scan_source?: string;
-  created_at: string;
-}
+import type { Callout } from "@/lib/types";
 
 type SignalFilter = "all" | "buy" | "sell" | "watch";
 
