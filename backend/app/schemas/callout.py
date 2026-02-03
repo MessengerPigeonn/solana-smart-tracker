@@ -47,3 +47,10 @@ class CalloutStatsResponse(BaseModel):
     buy_signals: int = 0
     watch_signals: int = 0
     sell_signals: int = 0
+
+
+class TopCalloutResponse(BaseModel):
+    callout: CalloutResponse
+    ath_multiplier: float
+    current_multiplier: Optional[float] = None
+    current_market_cap: Optional[float] = None

@@ -31,3 +31,10 @@ export interface CalloutStats {
   watch_signals: number;
   sell_signals: number;
 }
+
+export interface TopCallout {
+  callout: Callout;
+  ath_multiplier: number;
+  current_multiplier?: number | null;
+  current_market_cap?: number | null;
+}

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CalloutFeed } from "@/components/callout-feed";
 import { CalloutStatsBanner } from "@/components/callout-stats-banner";
+import { TopCallout } from "@/components/top-callout";
 import { apiFetch } from "@/lib/api";
 import { getMe, type User } from "@/lib/auth";
 import { Bell, ArrowUpCircle, ArrowDownCircle, Eye } from "lucide-react";
@@ -92,6 +93,9 @@ export default function CalloutsPage() {
 
       {/* Performance stats banner */}
       <CalloutStatsBanner />
+
+      {/* Pinned top callout */}
+      <TopCallout />
 
       {/* Signal type filter */}
       <div className="flex gap-1 border-b border-border/30 pb-2">

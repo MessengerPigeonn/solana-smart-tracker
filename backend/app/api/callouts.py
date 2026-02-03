@@ -11,7 +11,7 @@ from app.database import get_db, async_session
 from app.models.user import User, Tier
 from app.models.callout import Callout
 from app.models.token import ScannedToken
-from app.schemas.callout import CalloutResponse, CalloutListResponse, CalloutStatsResponse
+from app.schemas.callout import CalloutResponse, CalloutListResponse, CalloutStatsResponse, TopCalloutResponse
 from app.middleware.auth import get_optional_user, require_tier
 
 router = APIRouter(prefix="/api/callouts", tags=["callouts"])
@@ -96,20 +96,22 @@ async def callout_stats(
         if not c.market_cap or c.market_cap <= 0:
             continue
 
-        # Current multiplier
+        # Current multiplier (cap at 100x to filter garbage data)
         token = tokens_by_addr.get(c.token_address)
         if token and token.market_cap > 0:
             mult = token.market_cap / c.market_cap
-            current_multipliers.append(mult)
+            if mult <= 100:
+                current_multipliers.append(mult)
 
-        # ATH multiplier
+        # ATH multiplier (cap at 100x)
         if c.peak_market_cap and c.peak_market_cap > 0:
             ath_mult = c.peak_market_cap / c.market_cap
-            ath_multipliers.append(ath_mult)
-            if ath_mult > best_ath:
-                best_ath = ath_mult
-                best_symbol = c.token_symbol
-                best_address = c.token_address
+            if ath_mult <= 100:
+                ath_multipliers.append(ath_mult)
+                if ath_mult > best_ath:
+                    best_ath = ath_mult
+                    best_symbol = c.token_symbol
+                    best_address = c.token_address
 
     avg_mult = round(sum(current_multipliers) / len(current_multipliers), 2) if current_multipliers else None
     avg_ath = round(sum(ath_multipliers) / len(ath_multipliers), 2) if ath_multipliers else None
@@ -126,6 +128,65 @@ async def callout_stats(
         buy_signals=buy_signals,
         watch_signals=watch_signals,
         sell_signals=sell_signals,
+    )
+
+
+@router.get("/top", response_model=Optional[TopCalloutResponse])
+async def top_callout(
+    db: AsyncSession = Depends(get_db),
+):
+    """Best performing callout from the past 3 days based on ATH multiplier."""
+    three_days_ago = datetime.now(timezone.utc) - timedelta(days=3)
+    result = await db.execute(
+        select(Callout).where(
+            Callout.created_at >= three_days_ago,
+            Callout.signal.in_(["buy", "watch"]),
+            Callout.market_cap.isnot(None),
+            Callout.market_cap > 0,
+            Callout.peak_market_cap.isnot(None),
+            Callout.peak_market_cap > 0,
+        )
+    )
+    callouts = result.scalars().all()
+
+    if not callouts:
+        return None
+
+    # Also get current market caps
+    addresses = list(set(c.token_address for c in callouts))
+    token_result = await db.execute(
+        select(ScannedToken).where(ScannedToken.address.in_(addresses))
+    )
+    tokens_by_addr = {t.address: t for t in token_result.scalars().all()}
+
+    best = None
+    best_ath_mult = 0.0
+
+    for c in callouts:
+        ath_mult = c.peak_market_cap / c.market_cap
+        # Filter garbage data (>100x is unreliable)
+        if ath_mult > 100:
+            continue
+        if ath_mult > best_ath_mult:
+            best_ath_mult = ath_mult
+            best = c
+
+    if not best:
+        return None
+
+    token = tokens_by_addr.get(best.token_address)
+    current_mcap = token.market_cap if token and token.market_cap > 0 else None
+    current_mult = None
+    if current_mcap and best.market_cap > 0:
+        m = current_mcap / best.market_cap
+        if m <= 100:
+            current_mult = round(m, 2)
+
+    return TopCalloutResponse(
+        callout=CalloutResponse.model_validate(best),
+        ath_multiplier=round(best_ath_mult, 2),
+        current_multiplier=current_mult,
+        current_market_cap=current_mcap,
     )
 
 

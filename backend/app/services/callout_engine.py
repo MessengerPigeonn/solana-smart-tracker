@@ -24,7 +24,7 @@ MIN_LIQUIDITY = 5000
 MIN_LIQUIDITY_MICRO = 1000
 
 # Dedup window: suppress duplicate callouts for the same token
-DEDUP_HOURS = 2
+DEDUP_HOURS = 24
 
 
 def _passes_quality_gate(token: ScannedToken) -> bool:

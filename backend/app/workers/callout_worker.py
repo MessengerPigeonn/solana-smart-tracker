@@ -36,7 +36,16 @@ async def _update_peak_market_caps(db):
         token = tokens_by_addr.get(callout.token_address)
         if not token or token.market_cap <= 0:
             continue
+
+        # Sanity check: reject absurd market caps (mcap/liquidity > 500x is bad data)
+        if token.liquidity > 0 and token.market_cap / token.liquidity > 500:
+            continue
+
+        # Cap at 100x vs callout market cap to filter garbage data
         current_mcap = token.market_cap
+        if current_mcap > callout.market_cap * 100:
+            continue
+
         old_peak = callout.peak_market_cap or 0
         if current_mcap > old_peak:
             callout.peak_market_cap = current_mcap
