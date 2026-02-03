@@ -343,12 +343,20 @@ async def generate_callouts(db: AsyncSession) -> list[Callout]:
     tokens = result.scalars().all()
 
     new_callouts = []
+    gate_passed = 0
+    top_score = 0.0
+    top_symbol = ""
     for token in tokens:
         # Quality gate: reject tokens with no mcap, no volume, or low liquidity
         if not _passes_quality_gate(token):
             continue
+        gate_passed += 1
 
         score, reason, smart_wallets = await score_token(db, token)
+
+        if score > top_score:
+            top_score = score
+            top_symbol = token.symbol
 
         if score < WATCH_THRESHOLD:
             continue
@@ -390,5 +398,8 @@ async def generate_callouts(db: AsyncSession) -> list[Callout]:
     new_callouts.extend(sell_callouts)
 
     await db.flush()
-    logger.info(f"Generated {len(new_callouts)} new callouts from {len(tokens)} tokens")
+    logger.info(
+        f"Generated {len(new_callouts)} new callouts from {len(tokens)} tokens "
+        f"({gate_passed} passed gate, top score: {top_symbol}={top_score})"
+    )
     return new_callouts
