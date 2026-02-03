@@ -9,6 +9,7 @@ import httpx
 from app.services.birdeye import birdeye_client
 from app.services.helius import helius_client
 from app.services.jupiter_price import jupiter_price_client
+from app.services.dexscreener import dexscreener_client
 
 logger = logging.getLogger(__name__)
 
@@ -56,23 +57,29 @@ class TokenDataProvider:
             return True
         return False
 
-    # ── trending / token list (Birdeye only) ───────────────────────
+    # ── trending / token list (Birdeye → DexScreener) ──────────────
 
     async def get_trending_tokens(
         self, offset: int = 0, limit: int = 20
     ) -> list[dict]:
-        """Birdeye only — no Helius equivalent for trending/ranking."""
-        if not self._is_birdeye_healthy():
-            logger.debug("Birdeye unhealthy, skipping get_trending_tokens")
-            return []
+        """Birdeye primary, DexScreener fallback for trending tokens."""
+        if self._is_birdeye_healthy():
+            try:
+                result = await birdeye_client.get_trending_tokens(offset=offset, limit=limit)
+                if result:
+                    return result
+            except Exception as e:
+                if self._is_retriable_error(e):
+                    self._mark_birdeye_unhealthy(e)
+                else:
+                    logger.warning(f"Birdeye get_trending_tokens failed: {e}")
+
+        # Fallback to DexScreener
         try:
-            result = await birdeye_client.get_trending_tokens(offset=offset, limit=limit)
-            return result
+            logger.info("Using DexScreener fallback for trending tokens")
+            return await dexscreener_client.get_trending_tokens(limit=limit)
         except Exception as e:
-            if self._is_retriable_error(e):
-                self._mark_birdeye_unhealthy(e)
-            else:
-                logger.warning(f"get_trending_tokens failed: {e}")
+            logger.warning(f"DexScreener get_trending_tokens also failed: {e}")
             return []
 
     async def get_token_list(
@@ -82,19 +89,26 @@ class TokenDataProvider:
         offset: int = 0,
         limit: int = 50,
     ) -> list[dict]:
-        """Birdeye only — no Helius equivalent for volume-ranked lists."""
-        if not self._is_birdeye_healthy():
-            logger.debug("Birdeye unhealthy, skipping get_token_list")
-            return []
+        """Birdeye primary, DexScreener fallback for token lists."""
+        if self._is_birdeye_healthy():
+            try:
+                result = await birdeye_client.get_token_list(
+                    sort_by=sort_by, sort_type=sort_type, offset=offset, limit=limit
+                )
+                if result:
+                    return result
+            except Exception as e:
+                if self._is_retriable_error(e):
+                    self._mark_birdeye_unhealthy(e)
+                else:
+                    logger.warning(f"Birdeye get_token_list failed: {e}")
+
+        # Fallback to DexScreener latest pairs
         try:
-            return await birdeye_client.get_token_list(
-                sort_by=sort_by, sort_type=sort_type, offset=offset, limit=limit
-            )
+            logger.info("Using DexScreener fallback for token list")
+            return await dexscreener_client.get_latest_token_profiles(limit=limit)
         except Exception as e:
-            if self._is_retriable_error(e):
-                self._mark_birdeye_unhealthy(e)
-            else:
-                logger.warning(f"get_token_list failed: {e}")
+            logger.warning(f"DexScreener get_latest_token_profiles also failed: {e}")
             return []
 
     # ── token overview (Birdeye → Helius) ──────────────────────────
@@ -240,7 +254,7 @@ class TokenDataProvider:
             logger.warning(f"Helius get_token_holders also failed for {address}: {e}")
             return []
 
-    # ── top traders (Birdeye only) ─────────────────────────────────
+    # ── top traders (Birdeye only, degrades gracefully) ────────────
 
     async def get_top_traders(
         self,
@@ -267,7 +281,7 @@ class TokenDataProvider:
                 logger.warning(f"get_top_traders failed for {address}: {e}")
             return []
 
-    # ── new listings (Birdeye only) ────────────────────────────────
+    # ── new listings (Birdeye → DexScreener) ───────────────────────
 
     async def get_new_listings(
         self,
@@ -279,23 +293,30 @@ class TokenDataProvider:
         offset: int = 0,
         limit: int = 50,
     ) -> list[dict]:
-        """Birdeye only — no Helius equivalent for new listing discovery."""
-        if not self._is_birdeye_healthy():
-            logger.debug("Birdeye unhealthy, skipping get_new_listings")
-            return []
+        """Birdeye primary, DexScreener fallback for new listing discovery."""
+        if self._is_birdeye_healthy():
+            try:
+                result = await birdeye_client.get_new_listings(
+                    min_listing_time=min_listing_time,
+                    max_listing_time=max_listing_time,
+                    min_liquidity=min_liquidity,
+                    sort_by=sort_by, sort_type=sort_type,
+                    offset=offset, limit=limit,
+                )
+                if result:
+                    return result
+            except Exception as e:
+                if self._is_retriable_error(e):
+                    self._mark_birdeye_unhealthy(e)
+                else:
+                    logger.warning(f"Birdeye get_new_listings failed: {e}")
+
+        # Fallback to DexScreener latest pairs
         try:
-            return await birdeye_client.get_new_listings(
-                min_listing_time=min_listing_time,
-                max_listing_time=max_listing_time,
-                min_liquidity=min_liquidity,
-                sort_by=sort_by, sort_type=sort_type,
-                offset=offset, limit=limit,
-            )
+            logger.info("Using DexScreener fallback for new listings")
+            return await dexscreener_client.get_latest_token_profiles(limit=limit)
         except Exception as e:
-            if self._is_retriable_error(e):
-                self._mark_birdeye_unhealthy(e)
-            else:
-                logger.warning(f"get_new_listings failed: {e}")
+            logger.warning(f"DexScreener get_latest_token_profiles also failed: {e}")
             return []
 
     # ── search token (Birdeye → Helius address-only) ───────────────
