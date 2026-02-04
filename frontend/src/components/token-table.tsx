@@ -10,8 +10,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 import { TradingLinks } from "@/components/trading-links";
 import { formatCurrency, formatAddress, formatPercent } from "@/lib/utils";
+import { Copy, Check, ExternalLink } from "lucide-react";
 
 export interface Token {
   address: string;
@@ -81,8 +83,32 @@ function TokenAge({ createdAt }: { createdAt?: string | null }) {
   if (hours < 6) return <span className="text-green-500">{hours}h</span>;
   if (hours < 24) return <span className="text-yellow-500">{hours}h</span>;
   const days = Math.floor(hours / 24);
-  if (days < 7) return <span className="text-muted-foreground">{days}d</span>;
   return <span className="text-muted-foreground">{days}d</span>;
+}
+
+function CopyButton({ address }: { address: string }) {
+  const [copied, setCopied] = useState(false);
+
+  function handleCopy(e: React.MouseEvent) {
+    e.stopPropagation();
+    navigator.clipboard.writeText(address);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <button
+      onClick={handleCopy}
+      className="text-muted-foreground hover:text-foreground transition-colors"
+      title="Copy address"
+    >
+      {copied ? (
+        <Check className="h-3 w-3 text-green-500" />
+      ) : (
+        <Copy className="h-3 w-3" />
+      )}
+    </button>
+  );
 }
 
 function ExpandedRow({ token }: { token: Token }) {
@@ -91,10 +117,37 @@ function ExpandedRow({ token }: { token: Token }) {
   const total = buys + sells;
   const buyPct = total > 0 ? ((buys / total) * 100).toFixed(0) : "0";
   const isPrintScan = token.scan_source === "print_scan";
+  const dexUrl = `https://dexscreener.com/solana/${token.address}`;
 
   return (
     <TableRow className="bg-accent/30">
       <TableCell colSpan={14} className="py-3">
+        {/* Token name + address row */}
+        <div className="flex items-center gap-3 mb-3 pb-3 border-b border-border/50">
+          <div>
+            <span className="font-medium">{token.symbol}</span>
+            {token.name && token.name !== token.symbol && (
+              <span className="text-sm text-muted-foreground ml-2">{token.name}</span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <code className="text-xs text-muted-foreground font-mono">
+              {formatAddress(token.address, 6)}
+            </code>
+            <CopyButton address={token.address} />
+            <a
+              href={dexUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-muted-foreground hover:text-foreground transition-colors"
+              title="View on DexScreener"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
           <div>
             <p className="text-muted-foreground">Type</p>
@@ -149,8 +202,18 @@ function ExpandedRow({ token }: { token: Token }) {
             </div>
           </div>
         )}
-        <div className="mt-3 pt-3 border-t border-border/50">
+        <div className="mt-3 pt-3 border-t border-border/50 flex items-center justify-between">
           <TradingLinks tokenAddress={token.address} variant="expanded" />
+          <a
+            href={dexUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+            onClick={(e) => e.stopPropagation()}
+          >
+            DexScreener
+            <ExternalLink className="h-3 w-3" />
+          </a>
         </div>
       </TableCell>
     </TableRow>
@@ -178,109 +241,114 @@ export function TokenTable({ tokens, onSort, sortBy, sortOrder }: TokenTableProp
   }
 
   return (
-    <div className="rounded-md border border-border/50 overflow-auto">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Token</TableHead>
-            <TableHead>Price</TableHead>
-            <SortableHeader column="price_change_5m">5m</SortableHeader>
-            <SortableHeader column="price_change_1h">1h</SortableHeader>
-            <SortableHeader column="price_change_24h">24h</SortableHeader>
-            <SortableHeader column="volume_24h">Volume</SortableHeader>
-            <SortableHeader column="liquidity">Liq</SortableHeader>
-            <SortableHeader column="market_cap">MCap</SortableHeader>
-            <TableHead>Buys/Sells</TableHead>
-            <SortableHeader column="smart_money_count">Smart $</SortableHeader>
-            <SortableHeader column="rug_risk_score">Risk</SortableHeader>
-            <TableHead>Age</TableHead>
-            <TableHead>Trade</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {tokens.length === 0 ? (
+    <Card className="glass-card overflow-hidden">
+      <div className="overflow-auto">
+        <Table>
+          <TableHeader>
             <TableRow>
-              <TableCell colSpan={14} className="text-center text-muted-foreground py-8">
-                No tokens found
-              </TableCell>
+              <TableHead>Token</TableHead>
+              <TableHead>Price</TableHead>
+              <SortableHeader column="price_change_5m">5m</SortableHeader>
+              <SortableHeader column="price_change_1h">1h</SortableHeader>
+              <SortableHeader column="price_change_24h">24h</SortableHeader>
+              <SortableHeader column="volume_24h">Volume</SortableHeader>
+              <SortableHeader column="liquidity">Liq</SortableHeader>
+              <SortableHeader column="market_cap">MCap</SortableHeader>
+              <TableHead>Buys/Sells</TableHead>
+              <SortableHeader column="smart_money_count">Smart $</SortableHeader>
+              <SortableHeader column="rug_risk_score">Risk</SortableHeader>
+              <TableHead>Age</TableHead>
+              <TableHead>Trade</TableHead>
             </TableRow>
-          ) : (
-            tokens.map((token) => {
-              const isExpanded = expandedRow === token.address;
-              const buys = token.buy_count_24h || 0;
-              const sells = token.sell_count_24h || 0;
+          </TableHeader>
+          <TableBody>
+            {tokens.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={14} className="text-center text-muted-foreground py-8">
+                  No tokens found
+                </TableCell>
+              </TableRow>
+            ) : (
+              tokens.map((token) => {
+                const isExpanded = expandedRow === token.address;
+                const buys = token.buy_count_24h || 0;
+                const sells = token.sell_count_24h || 0;
 
-              return (
-                <>
-                  <TableRow
-                    key={token.address}
-                    className={`cursor-pointer hover:bg-primary/5 transition-colors ${
-                      token.has_buy_signal ? "bg-green-500/5 border-l-2 border-l-green-500" : ""
-                    }`}
-                    onClick={() => setExpandedRow(isExpanded ? null : token.address)}
-                  >
-                    <TableCell>
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <p className="font-medium">{token.symbol}</p>
-                          {token.token_type === "memecoin" && (
-                            <Badge variant="outline" className="text-[10px] px-1 py-0">
-                              meme
-                            </Badge>
-                          )}
-                          {token.scan_source === "print_scan" && (
-                            <Badge className="text-[10px] px-1 py-0 bg-purple-500/10 text-purple-400 border-purple-500/20">
-                              PRINT
-                            </Badge>
-                          )}
+                return (
+                  <>
+                    <TableRow
+                      key={token.address}
+                      className={`cursor-pointer hover:bg-primary/5 transition-colors ${
+                        token.has_buy_signal ? "bg-green-500/5 border-l-2 border-l-green-500" : ""
+                      } ${isExpanded ? "bg-accent/20" : ""}`}
+                      onClick={() => setExpandedRow(isExpanded ? null : token.address)}
+                    >
+                      <TableCell>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <p className="font-medium">{token.symbol}</p>
+                            {token.token_type === "memecoin" && (
+                              <Badge variant="outline" className="text-[10px] px-1 py-0">
+                                meme
+                              </Badge>
+                            )}
+                            {token.scan_source === "print_scan" && (
+                              <Badge className="text-[10px] px-1 py-0 bg-purple-500/10 text-purple-400 border-purple-500/20">
+                                PRINT
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <p className="text-xs text-muted-foreground font-mono">
+                              {formatAddress(token.address, 4)}
+                            </p>
+                            <CopyButton address={token.address} />
+                          </div>
                         </div>
-                        <p className="text-xs text-muted-foreground">
-                          {formatAddress(token.address, 6)}
-                        </p>
-                      </div>
-                    </TableCell>
-                    <TableCell className="font-mono">
-                      {formatCurrency(token.price)}
-                    </TableCell>
-                    <TableCell>
-                      <PriceChange value={token.price_change_5m} />
-                    </TableCell>
-                    <TableCell>
-                      <PriceChange value={token.price_change_1h} />
-                    </TableCell>
-                    <TableCell>
-                      <PriceChange value={token.price_change_24h} />
-                    </TableCell>
-                    <TableCell>{formatCurrency(token.volume_24h)}</TableCell>
-                    <TableCell>{formatCurrency(token.liquidity)}</TableCell>
-                    <TableCell>{formatCurrency(token.market_cap)}</TableCell>
-                    <TableCell>
-                      <span className="text-green-500">{buys}</span>
-                      <span className="text-muted-foreground">/</span>
-                      <span className="text-red-500">{sells}</span>
-                    </TableCell>
-                    <TableCell>
-                      <span className="font-medium text-primary">
-                        {token.smart_money_count}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <RiskDot score={token.rug_risk_score} />
-                    </TableCell>
-                    <TableCell>
-                      <TokenAge createdAt={token.created_at_chain} />
-                    </TableCell>
-                    <TableCell>
-                      <TradingLinks tokenAddress={token.address} variant="icon-only" />
-                    </TableCell>
-                  </TableRow>
-                  {isExpanded && <ExpandedRow token={token} />}
-                </>
-              );
-            })
-          )}
-        </TableBody>
-      </Table>
-    </div>
+                      </TableCell>
+                      <TableCell className="font-mono">
+                        {formatCurrency(token.price)}
+                      </TableCell>
+                      <TableCell>
+                        <PriceChange value={token.price_change_5m} />
+                      </TableCell>
+                      <TableCell>
+                        <PriceChange value={token.price_change_1h} />
+                      </TableCell>
+                      <TableCell>
+                        <PriceChange value={token.price_change_24h} />
+                      </TableCell>
+                      <TableCell>{formatCurrency(token.volume_24h)}</TableCell>
+                      <TableCell>{formatCurrency(token.liquidity)}</TableCell>
+                      <TableCell>{formatCurrency(token.market_cap)}</TableCell>
+                      <TableCell>
+                        <span className="text-green-500">{buys}</span>
+                        <span className="text-muted-foreground">/</span>
+                        <span className="text-red-500">{sells}</span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="font-medium text-primary">
+                          {token.smart_money_count}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <RiskDot score={token.rug_risk_score} />
+                      </TableCell>
+                      <TableCell>
+                        <TokenAge createdAt={token.created_at_chain} />
+                      </TableCell>
+                      <TableCell>
+                        <TradingLinks tokenAddress={token.address} variant="icon-only" />
+                      </TableCell>
+                    </TableRow>
+                    {isExpanded && <ExpandedRow token={token} />}
+                  </>
+                );
+              })
+            )}
+          </TableBody>
+        </Table>
+      </div>
+    </Card>
   );
 }
