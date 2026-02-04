@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import {
   Table,
   TableBody,
@@ -275,9 +275,8 @@ export function TokenTable({ tokens, onSort, sortBy, sortOrder }: TokenTableProp
                 const sells = token.sell_count_24h || 0;
 
                 return (
-                  <>
+                  <Fragment key={token.address}>
                     <TableRow
-                      key={token.address}
                       className={`cursor-pointer hover:bg-primary/5 transition-colors ${
                         token.has_buy_signal ? "bg-green-500/5 border-l-2 border-l-green-500" : ""
                       } ${isExpanded ? "bg-accent/20" : ""}`}
@@ -342,7 +341,7 @@ export function TokenTable({ tokens, onSort, sortBy, sortOrder }: TokenTableProp
                       </TableCell>
                     </TableRow>
                     {isExpanded && <ExpandedRow token={token} />}
-                  </>
+                  </Fragment>
                 );
               })
             )}
