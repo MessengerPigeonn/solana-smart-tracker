@@ -51,7 +51,7 @@ export const TRADING_PLATFORMS: TradingPlatform[] = [
     name: "Padre Terminal",
     shortName: "Padre",
     icon: "Terminal",
-    buildUrl: (addr) => `https://trade.padre.gg/trade/${addr}`,
+    buildUrl: (addr) => `https://trade.padre.gg/trade/solana/${addr}`,
     color: "#06B6D4",
     description: "Trade on Padre Terminal",
   },
