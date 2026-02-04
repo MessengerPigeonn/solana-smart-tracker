@@ -67,17 +67,9 @@ export function TradingLinks({
     setPreferred(platform);
   }, []);
 
-  const openPlatform = useCallback(
-    (platform: TradingPlatform) => {
-      window.open(platform.buildUrl(tokenAddress), "_blank", "noopener");
-    },
-    [tokenAddress]
-  );
-
-  const stopPropagation = useCallback(
-    (e: React.MouseEvent) => e.stopPropagation(),
-    []
-  );
+  // Build URLs at render time — these are baked into href attributes
+  // so they cannot go stale due to closure issues
+  const preferredUrl = preferred.buildUrl(tokenAddress);
 
   if (variant === "icon-only") {
     const IconComp = ICON_MAP[preferred.icon] || Zap;
@@ -85,17 +77,15 @@ export function TradingLinks({
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className={`h-7 w-7 hover:text-primary hover:bg-primary/10 ${className}`}
-              onClick={(e) => {
-                stopPropagation(e);
-                openPlatform(preferred);
-              }}
+            <a
+              href={preferredUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`inline-flex items-center justify-center h-7 w-7 rounded-md hover:text-primary hover:bg-primary/10 transition-colors ${className}`}
+              onClick={(e) => e.stopPropagation()}
             >
               <IconComp className="h-3.5 w-3.5" />
-            </Button>
+            </a>
           </TooltipTrigger>
           <TooltipContent>Quick buy on {preferred.name}</TooltipContent>
         </Tooltip>
@@ -107,32 +97,33 @@ export function TradingLinks({
     return (
       <div
         className={`flex items-center gap-1.5 flex-wrap ${className}`}
-        onClick={stopPropagation}
+        onClick={(e) => e.stopPropagation()}
       >
         <span className="text-xs text-muted-foreground mr-1">Trade on:</span>
         {TRADING_PLATFORMS.map((platform) => {
           const IconComp = ICON_MAP[platform.icon] || Zap;
           const isDefault = platform.id === preferred.id;
+          const url = platform.buildUrl(tokenAddress);
           return (
             <TooltipProvider key={platform.id}>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className={`h-7 px-2 text-xs gap-1 ${
+                  <a
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`inline-flex items-center h-7 px-2 text-xs gap-1 rounded-md border transition-colors ${
                       isDefault
                         ? "border-primary/50 text-primary"
-                        : "hover:border-primary/30"
+                        : "border-input hover:border-primary/30"
                     }`}
-                    onClick={() => openPlatform(platform)}
                   >
                     <IconComp className="h-3 w-3" />
                     {platform.shortName}
                     {isDefault && (
                       <Star className="h-2.5 w-2.5 fill-primary text-primary" />
                     )}
-                  </Button>
+                  </a>
                 </TooltipTrigger>
                 <TooltipContent>{platform.description}</TooltipContent>
               </Tooltip>
@@ -149,20 +140,20 @@ export function TradingLinks({
   return (
     <div
       className={`inline-flex items-center ${className}`}
-      onClick={stopPropagation}
+      onClick={(e) => e.stopPropagation()}
     >
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 px-2 text-xs rounded-r-none border-r-0 gap-1 hover:border-primary/50 hover:text-primary"
-              onClick={() => openPlatform(preferred)}
+            <a
+              href={preferredUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center h-7 px-2 text-xs rounded-r-none border border-r-0 border-input rounded-md gap-1 hover:border-primary/50 hover:text-primary transition-colors"
             >
               <PreferredIcon className="h-3 w-3" />
               Buy
-            </Button>
+            </a>
           </TooltipTrigger>
           <TooltipContent>Quick buy on {preferred.name}</TooltipContent>
         </Tooltip>
@@ -184,20 +175,24 @@ export function TradingLinks({
           {TRADING_PLATFORMS.map((platform) => {
             const IconComp = ICON_MAP[platform.icon] || Zap;
             const isDefault = platform.id === preferred.id;
+            const url = platform.buildUrl(tokenAddress);
             return (
-              <DropdownMenuItem
-                key={platform.id}
-                onClick={() => openPlatform(platform)}
-                className="gap-2"
-              >
-                <IconComp className="h-4 w-4" />
-                <span className="flex-1">{platform.name}</span>
-                {isDefault && (
-                  <Badge variant="outline" className="text-[10px] px-1 py-0">
-                    default
-                  </Badge>
-                )}
-                <ExternalLink className="h-3 w-3 text-muted-foreground" />
+              <DropdownMenuItem key={platform.id} asChild>
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="gap-2 cursor-pointer"
+                >
+                  <IconComp className="h-4 w-4" />
+                  <span className="flex-1">{platform.name}</span>
+                  {isDefault && (
+                    <Badge variant="outline" className="text-[10px] px-1 py-0">
+                      default
+                    </Badge>
+                  )}
+                  <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                </a>
               </DropdownMenuItem>
             );
           })}

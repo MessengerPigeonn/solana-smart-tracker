@@ -184,8 +184,8 @@ function TokenRow({ token, isExpanded, onToggle }: {
       <TableCell>
         <TokenAge createdAt={token.created_at_chain} />
       </TableCell>
-      <TableCell>
-        <TradingLinks tokenAddress={token.address} variant="icon-only" />
+      <TableCell onClick={(e) => e.stopPropagation()}>
+        <TradingLinks key={token.address} tokenAddress={token.address} variant="compact" />
       </TableCell>
     </TableRow>
   );
@@ -300,8 +300,8 @@ function ExpandedRow({ token }: { token: Token }) {
             </div>
           </div>
         )}
-        <div className="mt-3 pt-3 border-t border-border/50 flex items-center justify-between">
-          <TradingLinks tokenAddress={token.address} variant="expanded" />
+        <div className="mt-3 pt-3 border-t border-border/50 flex items-center justify-between" onClick={(e) => e.stopPropagation()}>
+          <TradingLinks key={token.address} tokenAddress={token.address} variant="expanded" />
           <a
             href={dexUrl}
             target="_blank"
