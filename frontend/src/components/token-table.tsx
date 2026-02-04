@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { TradingLinks } from "@/components/trading-links";
 import { formatCurrency, formatAddress, formatPercent } from "@/lib/utils";
-import { Copy, Check, ExternalLink } from "lucide-react";
+import { Copy, Check, ExternalLink, Zap } from "lucide-react";
 
 export interface Token {
   address: string;
@@ -185,7 +185,27 @@ function TokenRow({ token, isExpanded, onToggle }: {
         <TokenAge createdAt={token.created_at_chain} />
       </TableCell>
       <TableCell onClick={(e) => e.stopPropagation()}>
-        <TradingLinks key={token.address} tokenAddress={token.address} variant="compact" />
+        <div className="flex items-center gap-1">
+          <a
+            href={`https://photon-sol.tinyastro.io/en/lp/${token.address}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 h-7 px-2 text-xs rounded-md border border-input hover:border-primary/50 hover:text-primary transition-colors"
+            title={`Photon: ${token.address}`}
+          >
+            <Zap className="h-3 w-3" />
+            Buy
+          </a>
+          <a
+            href={`https://neo.bullx.io/terminal?chainId=1399811149&address=${token.address}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-input hover:border-primary/50 hover:text-primary transition-colors text-xs"
+            title={`BullX: ${token.address}`}
+          >
+            B
+          </a>
+        </div>
       </TableCell>
     </TableRow>
   );
