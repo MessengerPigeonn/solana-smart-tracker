@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useState, useCallback } from "react";
 import {
   Table,
   TableBody,
@@ -86,38 +86,126 @@ function TokenAge({ createdAt }: { createdAt?: string | null }) {
   return <span className="text-muted-foreground">{days}d</span>;
 }
 
-function CopyButton({ address }: { address: string }) {
+function TokenRow({ token, isExpanded, onToggle }: {
+  token: Token;
+  isExpanded: boolean;
+  onToggle: () => void;
+}) {
   const [copied, setCopied] = useState(false);
+  const buys = token.buy_count_24h || 0;
+  const sells = token.sell_count_24h || 0;
+  const dexUrl = `https://dexscreener.com/solana/${token.address}`;
 
-  function handleCopy(e: React.MouseEvent) {
+  const handleCopy = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    navigator.clipboard.writeText(address);
+    navigator.clipboard.writeText(token.address);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  }
+  }, [token.address]);
 
   return (
-    <button
-      onClick={handleCopy}
-      className="text-muted-foreground hover:text-foreground transition-colors"
-      title="Copy address"
+    <TableRow
+      className={`cursor-pointer hover:bg-primary/5 transition-colors ${
+        token.has_buy_signal ? "bg-green-500/5 border-l-2 border-l-green-500" : ""
+      } ${isExpanded ? "bg-accent/20" : ""}`}
+      onClick={onToggle}
     >
-      {copied ? (
-        <Check className="h-3 w-3 text-green-500" />
-      ) : (
-        <Copy className="h-3 w-3" />
-      )}
-    </button>
+      <TableCell>
+        <div>
+          <div className="flex items-center gap-1.5">
+            <p className="font-medium">{token.symbol}</p>
+            {token.token_type === "memecoin" && (
+              <Badge variant="outline" className="text-[10px] px-1 py-0">
+                meme
+              </Badge>
+            )}
+            {token.scan_source === "print_scan" && (
+              <Badge className="text-[10px] px-1 py-0 bg-purple-500/10 text-purple-400 border-purple-500/20">
+                PRINT
+              </Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <code className="text-xs text-muted-foreground font-mono" title={token.address}>
+              {formatAddress(token.address, 4)}
+            </code>
+            <button
+              onClick={handleCopy}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+              title={`Copy ${token.address}`}
+            >
+              {copied ? (
+                <Check className="h-3 w-3 text-green-500" />
+              ) : (
+                <Copy className="h-3 w-3" />
+              )}
+            </button>
+            <a
+              href={dexUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-muted-foreground hover:text-foreground transition-colors"
+              title={`DexScreener: ${token.address}`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
+        </div>
+      </TableCell>
+      <TableCell className="font-mono">
+        {formatCurrency(token.price)}
+      </TableCell>
+      <TableCell>
+        <PriceChange value={token.price_change_5m} />
+      </TableCell>
+      <TableCell>
+        <PriceChange value={token.price_change_1h} />
+      </TableCell>
+      <TableCell>
+        <PriceChange value={token.price_change_24h} />
+      </TableCell>
+      <TableCell>{formatCurrency(token.volume_24h)}</TableCell>
+      <TableCell>{formatCurrency(token.liquidity)}</TableCell>
+      <TableCell>{formatCurrency(token.market_cap)}</TableCell>
+      <TableCell>
+        <span className="text-green-500">{buys}</span>
+        <span className="text-muted-foreground">/</span>
+        <span className="text-red-500">{sells}</span>
+      </TableCell>
+      <TableCell>
+        <span className="font-medium text-primary">
+          {token.smart_money_count}
+        </span>
+      </TableCell>
+      <TableCell>
+        <RiskDot score={token.rug_risk_score} />
+      </TableCell>
+      <TableCell>
+        <TokenAge createdAt={token.created_at_chain} />
+      </TableCell>
+      <TableCell>
+        <TradingLinks tokenAddress={token.address} variant="icon-only" />
+      </TableCell>
+    </TableRow>
   );
 }
 
 function ExpandedRow({ token }: { token: Token }) {
+  const [copied, setCopied] = useState(false);
   const buys = token.buy_count_24h || 0;
   const sells = token.sell_count_24h || 0;
   const total = buys + sells;
   const buyPct = total > 0 ? ((buys / total) * 100).toFixed(0) : "0";
   const isPrintScan = token.scan_source === "print_scan";
   const dexUrl = `https://dexscreener.com/solana/${token.address}`;
+
+  const handleCopy = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(token.address);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [token.address]);
 
   return (
     <TableRow className="bg-accent/30">
@@ -131,16 +219,26 @@ function ExpandedRow({ token }: { token: Token }) {
             )}
           </div>
           <div className="flex items-center gap-2">
-            <code className="text-xs text-muted-foreground font-mono">
+            <code className="text-xs text-muted-foreground font-mono" title={token.address}>
               {formatAddress(token.address, 6)}
             </code>
-            <CopyButton address={token.address} />
+            <button
+              onClick={handleCopy}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+              title={`Copy ${token.address}`}
+            >
+              {copied ? (
+                <Check className="h-3 w-3 text-green-500" />
+              ) : (
+                <Copy className="h-3 w-3" />
+              )}
+            </button>
             <a
               href={dexUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="text-muted-foreground hover:text-foreground transition-colors"
-              title="View on DexScreener"
+              title={`DexScreener: ${token.address}`}
               onClick={(e) => e.stopPropagation()}
             >
               <ExternalLink className="h-3 w-3" />
@@ -269,81 +367,20 @@ export function TokenTable({ tokens, onSort, sortBy, sortOrder }: TokenTableProp
                 </TableCell>
               </TableRow>
             ) : (
-              tokens.map((token) => {
-                const isExpanded = expandedRow === token.address;
-                const buys = token.buy_count_24h || 0;
-                const sells = token.sell_count_24h || 0;
-
-                return (
-                  <Fragment key={token.address}>
-                    <TableRow
-                      className={`cursor-pointer hover:bg-primary/5 transition-colors ${
-                        token.has_buy_signal ? "bg-green-500/5 border-l-2 border-l-green-500" : ""
-                      } ${isExpanded ? "bg-accent/20" : ""}`}
-                      onClick={() => setExpandedRow(isExpanded ? null : token.address)}
-                    >
-                      <TableCell>
-                        <div>
-                          <div className="flex items-center gap-1.5">
-                            <p className="font-medium">{token.symbol}</p>
-                            {token.token_type === "memecoin" && (
-                              <Badge variant="outline" className="text-[10px] px-1 py-0">
-                                meme
-                              </Badge>
-                            )}
-                            {token.scan_source === "print_scan" && (
-                              <Badge className="text-[10px] px-1 py-0 bg-purple-500/10 text-purple-400 border-purple-500/20">
-                                PRINT
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            <p className="text-xs text-muted-foreground font-mono">
-                              {formatAddress(token.address, 4)}
-                            </p>
-                            <CopyButton address={token.address} />
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="font-mono">
-                        {formatCurrency(token.price)}
-                      </TableCell>
-                      <TableCell>
-                        <PriceChange value={token.price_change_5m} />
-                      </TableCell>
-                      <TableCell>
-                        <PriceChange value={token.price_change_1h} />
-                      </TableCell>
-                      <TableCell>
-                        <PriceChange value={token.price_change_24h} />
-                      </TableCell>
-                      <TableCell>{formatCurrency(token.volume_24h)}</TableCell>
-                      <TableCell>{formatCurrency(token.liquidity)}</TableCell>
-                      <TableCell>{formatCurrency(token.market_cap)}</TableCell>
-                      <TableCell>
-                        <span className="text-green-500">{buys}</span>
-                        <span className="text-muted-foreground">/</span>
-                        <span className="text-red-500">{sells}</span>
-                      </TableCell>
-                      <TableCell>
-                        <span className="font-medium text-primary">
-                          {token.smart_money_count}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <RiskDot score={token.rug_risk_score} />
-                      </TableCell>
-                      <TableCell>
-                        <TokenAge createdAt={token.created_at_chain} />
-                      </TableCell>
-                      <TableCell>
-                        <TradingLinks tokenAddress={token.address} variant="icon-only" />
-                      </TableCell>
-                    </TableRow>
-                    {isExpanded && <ExpandedRow token={token} />}
-                  </Fragment>
-                );
-              })
+              tokens.map((token) => (
+                <Fragment key={token.address}>
+                  <TokenRow
+                    token={token}
+                    isExpanded={expandedRow === token.address}
+                    onToggle={() => setExpandedRow(
+                      expandedRow === token.address ? null : token.address
+                    )}
+                  />
+                  {expandedRow === token.address && (
+                    <ExpandedRow token={token} />
+                  )}
+                </Fragment>
+              ))
             )}
           </TableBody>
         </Table>
