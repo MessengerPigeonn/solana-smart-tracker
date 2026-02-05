@@ -23,8 +23,8 @@ WATCH_THRESHOLD = 55
 MIN_LIQUIDITY = 5000
 MIN_LIQUIDITY_MICRO = 1000
 
-# Dedup window: suppress duplicate callouts for the same token
-DEDUP_HOURS = 24
+# Dedup: only one buy/watch callout per token ever (sell callouts use 24h window)
+SELL_DEDUP_HOURS = 24
 
 
 def _passes_quality_gate(token: ScannedToken) -> bool:
@@ -260,7 +260,7 @@ async def score_token(db: AsyncSession, token: ScannedToken) -> tuple[float, str
 async def _check_sell_signals(db: AsyncSession) -> list[Callout]:
     """Check if tokens with previous BUY callouts now show heavy selling."""
     one_day_ago = datetime.now(timezone.utc) - timedelta(hours=24)
-    dedup_cutoff = datetime.now(timezone.utc) - timedelta(hours=DEDUP_HOURS)
+    dedup_cutoff = datetime.now(timezone.utc) - timedelta(hours=SELL_DEDUP_HOURS)
 
     # Find tokens that had BUY callouts in the last 24h
     result = await db.execute(
@@ -336,7 +336,6 @@ async def _check_sell_signals(db: AsyncSession) -> list[Callout]:
 async def generate_callouts(db: AsyncSession) -> list[Callout]:
     """Run scoring algorithm on all recently scanned tokens and generate callouts."""
     five_minutes_ago = datetime.now(timezone.utc) - timedelta(minutes=5)
-    dedup_cutoff = datetime.now(timezone.utc) - timedelta(hours=DEDUP_HOURS)
     result = await db.execute(
         select(ScannedToken).where(ScannedToken.last_scanned >= five_minutes_ago)
     )
@@ -361,14 +360,14 @@ async def generate_callouts(db: AsyncSession) -> list[Callout]:
         if score < WATCH_THRESHOLD:
             continue
 
-        # Check if we already have a recent callout for this token (2h dedup)
-        recent = await db.execute(
-            select(Callout).where(
+        # One callout per token ever — skip if any buy/watch callout exists
+        existing = await db.execute(
+            select(Callout.id).where(
                 Callout.token_address == token.address,
-                Callout.created_at >= dedup_cutoff,
+                Callout.signal.in_([Signal.buy, Signal.watch]),
             ).limit(1)
         )
-        if recent.scalars().first():
+        if existing.scalars().first():
             continue
 
         signal = Signal.buy if score >= BUY_THRESHOLD else Signal.watch
