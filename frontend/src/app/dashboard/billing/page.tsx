@@ -202,7 +202,7 @@ export default function BillingPage() {
                 <div className="rounded-lg border border-border/50 bg-card/50 p-4 space-y-2">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Price</span>
-                    <span className="font-bold">$149/mo <span className="font-normal text-muted-foreground">or 5 SOL</span></span>
+                    <span className="font-bold">$999/mo <span className="font-normal text-muted-foreground">10% off with SOL</span></span>
                   </div>
                   <ul className="text-xs text-muted-foreground space-y-1 pt-1">
                     <li>Track 50 wallets (up from 10)</li>
@@ -223,7 +223,7 @@ export default function BillingPage() {
                       onClick={() => handleStripeCheckout("legend")}
                       disabled={checkoutLoading}
                     >
-                      {checkoutLoading ? "Redirecting to Stripe..." : "Upgrade to Legend — $149/mo"}
+                      {checkoutLoading ? "Redirecting to Stripe..." : "Upgrade to Legend — $999/mo"}
                     </Button>
                   </TabsContent>
                   <TabsContent value="sol">
@@ -257,13 +257,13 @@ export default function BillingPage() {
             >
               <p className="font-bold text-lg">Pro</p>
               <p className="text-2xl font-bold mt-1">
-                $49
+                $199
                 <span className="text-sm font-normal text-muted-foreground">
                   /month
                 </span>
               </p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                or 1 SOL via wallet
+                10% off with SOL
               </p>
               <ul className="mt-3 space-y-1 text-xs text-muted-foreground">
                 <li>Unlimited scanner</li>
@@ -281,13 +281,13 @@ export default function BillingPage() {
             >
               <p className="font-bold text-lg">Legend</p>
               <p className="text-2xl font-bold mt-1">
-                $149
+                $999
                 <span className="text-sm font-normal text-muted-foreground">
                   /month
                 </span>
               </p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                or 5 SOL via wallet
+                10% off with SOL
               </p>
               <ul className="mt-3 space-y-1 text-xs text-muted-foreground">
                 <li>Everything in Pro</li>
@@ -321,7 +321,7 @@ export default function BillingPage() {
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Price</span>
                       <span className="font-bold text-lg">
-                        ${selectedTier === "pro" ? "49" : "149"}/mo
+                        ${selectedTier === "pro" ? "199" : "999"}/mo
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
@@ -343,7 +343,7 @@ export default function BillingPage() {
                   >
                     {checkoutLoading
                       ? "Redirecting to Stripe..."
-                      : `Subscribe to ${selectedTier === "pro" ? "Pro" : "Legend"} — $${selectedTier === "pro" ? "49" : "149"}/mo`}
+                      : `Subscribe to ${selectedTier === "pro" ? "Pro" : "Legend"} — $${selectedTier === "pro" ? "199" : "999"}/mo`}
                   </Button>
                 </CardContent>
               </Card>

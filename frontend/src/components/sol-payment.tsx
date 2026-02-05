@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useConnection } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
@@ -16,10 +16,11 @@ import { formatAddress } from "@/lib/utils";
 
 const TREASURY_ADDRESS = process.env.NEXT_PUBLIC_SOL_TREASURY_WALLET || "";
 
-const TIER_SOL: Record<string, number> = {
-  pro: 1,
-  legend: 5,
-};
+interface SolPricing {
+  sol_usd: number;
+  discount_pct: number;
+  tiers: Record<string, { usd: number; sol: number }>;
+}
 
 interface SolPaymentProps {
   tier: "pro" | "legend";
@@ -34,6 +35,21 @@ export function SolPayment({ tier, onSuccess }: SolPaymentProps) {
   >("idle");
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [pricing, setPricing] = useState<SolPricing | null>(null);
+
+  useEffect(() => {
+    async function fetchPricing() {
+      try {
+        const data = await apiFetch<SolPricing>("/api/payments/sol/pricing");
+        setPricing(data);
+      } catch {
+        // ignore — will show loading state
+      }
+    }
+    fetchPricing();
+    const interval = setInterval(fetchPricing, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   const treasuryPubkey = useMemo(() => {
     if (!TREASURY_ADDRESS) return null;
@@ -44,7 +60,8 @@ export function SolPayment({ tier, onSuccess }: SolPaymentProps) {
     }
   }, []);
 
-  const amount = TIER_SOL[tier] ?? 1;
+  const tierPricing = pricing?.tiers[tier];
+  const amount = tierPricing?.sol ?? 0;
   const treasuryDisplay = TREASURY_ADDRESS;
 
   const copyAddress = useCallback(() => {
@@ -54,7 +71,7 @@ export function SolPayment({ tier, onSuccess }: SolPaymentProps) {
   }, [treasuryDisplay]);
 
   const handlePay = useCallback(async () => {
-    if (!publicKey || !sendTransaction || !treasuryPubkey) return;
+    if (!publicKey || !sendTransaction || !treasuryPubkey || !amount) return;
 
     setStatus("sending");
     setError(null);
@@ -63,7 +80,7 @@ export function SolPayment({ tier, onSuccess }: SolPaymentProps) {
       const instruction = SystemProgram.transfer({
         fromPubkey: publicKey,
         toPubkey: treasuryPubkey,
-        lamports: amount * LAMPORTS_PER_SOL,
+        lamports: Math.round(amount * LAMPORTS_PER_SOL),
       });
 
       const transaction = new Transaction().add(instruction);
@@ -129,8 +146,20 @@ export function SolPayment({ tier, onSuccess }: SolPaymentProps) {
         </div>
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">Amount</span>
-          <span className="font-bold text-lg">{amount} SOL</span>
+          {amount > 0 ? (
+            <span className="font-bold text-lg">{amount} SOL</span>
+          ) : (
+            <span className="text-muted-foreground text-sm">Loading...</span>
+          )}
         </div>
+        {pricing && (
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">SOL Price</span>
+            <span className="text-xs text-muted-foreground">
+              ${pricing.sol_usd} &middot; {pricing.discount_pct}% discount
+            </span>
+          </div>
+        )}
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">Plan</span>
           <span className="capitalize font-medium">{tier}</span>
@@ -148,10 +177,10 @@ export function SolPayment({ tier, onSuccess }: SolPaymentProps) {
         <Button
           variant="gradient"
           className="w-full"
-          disabled={status !== "idle" && status !== "error"}
+          disabled={(status !== "idle" && status !== "error") || !amount}
           onClick={handlePay}
         >
-          {status === "idle" && `Pay ${amount} SOL`}
+          {status === "idle" && (amount ? `Pay ${amount} SOL` : "Loading price...")}
           {status === "sending" && "Sending transaction..."}
           {status === "confirming" && "Confirming on-chain..."}
           {status === "verifying" && "Verifying payment..."}

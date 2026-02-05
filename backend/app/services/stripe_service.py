@@ -12,8 +12,8 @@ stripe.api_key = settings.stripe_secret_key
 
 # USD pricing in cents
 TIER_USD_CENTS = {
-    "pro": 4900,      # $49/month
-    "legend": 14900,   # $149/month
+    "pro": 19900,      # $199/month
+    "legend": 99900,   # $999/month
 }
 
 # Cache for auto-provisioned price IDs

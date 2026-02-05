@@ -26,9 +26,9 @@ export default function PricingPage() {
         />
         <PricingCard
           name="Pro"
-          price="$49"
+          price="$199"
           period="/month"
-          subtitle="or 1 SOL via wallet"
+          subtitle="10% off with SOL"
           features={[
             "Unlimited token scanner",
             "Real-time callout feed + SSE",
@@ -42,9 +42,9 @@ export default function PricingPage() {
         />
         <PricingCard
           name="Legend"
-          price="$149"
+          price="$999"
           period="/month"
-          subtitle="or 5 SOL via wallet"
+          subtitle="10% off with SOL"
           features={[
             "Everything in Pro",
             "Track 50 wallets",

@@ -17,7 +17,7 @@ from app.services.stripe_service import (
     handle_subscription_deleted,
     create_billing_portal_session,
 )
-from app.services.sol_payments import verify_sol_payment
+from app.services.sol_payments import verify_sol_payment, get_sol_usd_price, get_tier_sol_amount, TIER_USD, SOL_DISCOUNT
 
 settings = get_settings()
 router = APIRouter(prefix="/api/payments", tags=["payments"])
@@ -107,6 +107,23 @@ async def get_subscription(
         "expires": user.subscription_expires.isoformat() if user.subscription_expires else None,
         "stripe_subscription_id": user.stripe_subscription_id,
         "has_stripe": bool(user.stripe_customer_id),
+    }
+
+
+@router.get("/sol/pricing")
+async def sol_pricing():
+    """Return current SOL price and dynamic tier pricing."""
+    sol_price = await get_sol_usd_price()
+    return {
+        "sol_usd": round(sol_price, 2),
+        "discount_pct": int(SOL_DISCOUNT * 100),
+        "tiers": {
+            tier: {
+                "usd": usd,
+                "sol": round(usd * (1 - SOL_DISCOUNT) / sol_price, 4),
+            }
+            for tier, usd in TIER_USD.items()
+        },
     }
 
 

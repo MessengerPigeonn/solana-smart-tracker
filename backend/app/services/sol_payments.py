@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 import httpx
 from datetime import datetime, timezone, timedelta
 from sqlalchemy import select
@@ -7,13 +8,18 @@ from app.config import get_settings
 from app.models.user import User, Tier
 from app.models.payment import Payment, PaymentMethod
 
+logger = logging.getLogger(__name__)
+
 settings = get_settings()
 
-# SOL prices per tier (in SOL)
-TIER_PRICES_SOL = {
-    "pro": 1.0,
-    "legend": 5.0,
+# USD prices per tier
+TIER_USD = {
+    "pro": 199,
+    "legend": 999,
 }
+
+# Discount for paying with SOL (10% off)
+SOL_DISCOUNT = 0.10
 
 TIER_DURATION_DAYS = {
     "pro": 30,
@@ -21,6 +27,56 @@ TIER_DURATION_DAYS = {
 }
 
 SOLANA_RPC = "https://api.mainnet-beta.solana.com"
+
+# SOL native mint address for Jupiter price lookup
+SOL_MINT = "So11111111111111111111111111111111111111112"
+
+# Cache for SOL price (avoid hammering Jupiter on every request)
+_sol_price_cache: dict[str, float | datetime] = {"price": 0.0, "fetched_at": datetime.min}
+SOL_PRICE_CACHE_SECONDS = 60
+
+
+async def get_sol_usd_price() -> float:
+    """Fetch current SOL/USD price from Jupiter. Cached for 60s."""
+    cached_at = _sol_price_cache.get("fetched_at", datetime.min)
+    if isinstance(cached_at, datetime) and (datetime.now() - cached_at).total_seconds() < SOL_PRICE_CACHE_SECONDS:
+        price = _sol_price_cache.get("price", 0.0)
+        if isinstance(price, (int, float)) and price > 0:
+            return float(price)
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                "https://api.jup.ag/price/v2",
+                params={"ids": SOL_MINT},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            token_data = data.get("data", {}).get(SOL_MINT)
+            if token_data and token_data.get("price"):
+                price = float(token_data["price"])
+                _sol_price_cache["price"] = price
+                _sol_price_cache["fetched_at"] = datetime.now()
+                return price
+    except Exception as e:
+        logger.warning(f"Failed to fetch SOL price from Jupiter: {e}")
+
+    # Fallback to cached price if available
+    cached = _sol_price_cache.get("price", 0.0)
+    if isinstance(cached, (int, float)) and cached > 0:
+        return float(cached)
+
+    raise RuntimeError("Unable to fetch SOL price")
+
+
+async def get_tier_sol_amount(tier: str) -> float:
+    """Calculate the discounted SOL amount for a tier based on live SOL/USD price."""
+    usd_price = TIER_USD.get(tier)
+    if not usd_price:
+        raise ValueError(f"Invalid tier: {tier}")
+    sol_price = await get_sol_usd_price()
+    discounted_usd = usd_price * (1 - SOL_DISCOUNT)
+    return round(discounted_usd / sol_price, 4)
 
 
 async def verify_sol_payment(
@@ -33,9 +89,7 @@ async def verify_sol_payment(
     Verify a SOL transfer on-chain.
     Checks that the transaction transferred the correct amount to the treasury wallet.
     """
-    expected_amount = TIER_PRICES_SOL.get(tier)
-    if not expected_amount:
-        raise ValueError(f"Invalid tier: {tier}")
+    expected_amount = await get_tier_sol_amount(tier)
 
     # Fetch transaction from Solana RPC
     async with httpx.AsyncClient(timeout=30) as client:
