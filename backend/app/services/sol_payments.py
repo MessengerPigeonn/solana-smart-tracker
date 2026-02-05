@@ -72,6 +72,25 @@ async def _fetch_coingecko_price() -> float | None:
     return None
 
 
+async def _fetch_dexscreener_price() -> float | None:
+    """Try DexScreener API — get SOL price from the SOL/USDC pair."""
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                f"https://api.dexscreener.com/token-pairs/v1/solana/{SOL_MINT}",
+            )
+            resp.raise_for_status()
+            pairs = resp.json()
+            if isinstance(pairs, list):
+                for pair in pairs:
+                    price_usd = pair.get("priceUsd")
+                    if price_usd:
+                        return float(price_usd)
+    except Exception as e:
+        logger.warning(f"DexScreener SOL price fetch failed: {e}")
+    return None
+
+
 async def get_sol_usd_price() -> float:
     """Fetch current SOL/USD price. Tries Jupiter then CoinGecko. Cached for 60s."""
     cached_at = _sol_price_cache.get("fetched_at", datetime.min)
@@ -80,10 +99,12 @@ async def get_sol_usd_price() -> float:
         if isinstance(price, (int, float)) and price > 0:
             return float(price)
 
-    # Try Jupiter first, then CoinGecko
+    # Try Jupiter, then CoinGecko, then DexScreener
     price = await _fetch_jupiter_price()
     if not price:
         price = await _fetch_coingecko_price()
+    if not price:
+        price = await _fetch_dexscreener_price()
 
     if price and price > 0:
         _sol_price_cache["price"] = price
