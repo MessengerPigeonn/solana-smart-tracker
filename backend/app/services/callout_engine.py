@@ -26,6 +26,10 @@ MIN_LIQUIDITY_MICRO = 1000
 # Dedup: only one buy/watch callout per token ever (sell callouts use 24h window)
 SELL_DEDUP_HOURS = 24
 
+# Repin: resurface an existing callout if score gained significantly
+REPIN_SCORE_DELTA = 10  # new score must be 10+ points above stored score
+REPIN_COOLDOWN_HOURS = 6  # don't repin more than once per 6h
+
 
 def _passes_quality_gate(token: ScannedToken) -> bool:
     """Reject tokens with no market cap or clearly insufficient liquidity/volume.
@@ -360,14 +364,37 @@ async def generate_callouts(db: AsyncSession) -> list[Callout]:
         if score < WATCH_THRESHOLD:
             continue
 
-        # One callout per token ever — skip if any buy/watch callout exists
-        existing = await db.execute(
-            select(Callout.id).where(
+        # Check for existing buy/watch callout
+        existing_result = await db.execute(
+            select(Callout).where(
                 Callout.token_address == token.address,
                 Callout.signal.in_([Signal.buy, Signal.watch]),
             ).limit(1)
         )
-        if existing.scalars().first():
+        existing_callout = existing_result.scalars().first()
+
+        if existing_callout:
+            # Repin if score gained significantly and cooldown passed
+            repin_cutoff = datetime.now(timezone.utc) - timedelta(hours=REPIN_COOLDOWN_HOURS)
+            already_repinned_recently = (
+                existing_callout.repinned_at and existing_callout.repinned_at >= repin_cutoff
+            )
+            created_recently = existing_callout.created_at >= repin_cutoff
+
+            if (
+                score >= existing_callout.score + REPIN_SCORE_DELTA
+                and not already_repinned_recently
+                and not created_recently
+            ):
+                existing_callout.score = score
+                existing_callout.reason = reason
+                existing_callout.repinned_at = datetime.now(timezone.utc)
+                if score >= BUY_THRESHOLD and existing_callout.signal == Signal.watch:
+                    existing_callout.signal = Signal.buy
+                if smart_wallets:
+                    existing_callout.smart_wallets = smart_wallets
+                new_callouts.append(existing_callout)
+                logger.info(f"Repinned {token.symbol} (score {existing_callout.score} -> {score})")
             continue
 
         signal = Signal.buy if score >= BUY_THRESHOLD else Signal.watch

@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { TradingLinks } from "@/components/trading-links";
 import { formatCurrency, formatAddress, formatPercent, formatNumber } from "@/lib/utils";
-import { Copy, Check, ExternalLink, AlertTriangle } from "lucide-react";
+import { Copy, Check, ExternalLink, AlertTriangle, Pin } from "lucide-react";
 
 interface CalloutCardProps {
   tokenSymbol: string;
@@ -27,6 +27,7 @@ interface CalloutCardProps {
   dexscreenerUrl?: string;
   currentMarketCap?: number;
   peakMarketCap?: number | null;
+  repinnedAt?: string | null;
 }
 
 export function CalloutCard({
@@ -49,6 +50,7 @@ export function CalloutCard({
   dexscreenerUrl,
   currentMarketCap,
   peakMarketCap,
+  repinnedAt,
 }: CalloutCardProps) {
   const [copied, setCopied] = useState(false);
 
@@ -115,6 +117,12 @@ export function CalloutCard({
             {scanSource === "print_scan" && (
               <Badge className="text-[10px] px-1 py-0 bg-purple-500/10 text-purple-400 border-purple-500/20">
                 PRINT
+              </Badge>
+            )}
+            {repinnedAt && (
+              <Badge className="text-[10px] px-1 py-0 bg-blue-500/10 text-blue-400 border-blue-500/20 gap-0.5">
+                <Pin className="h-2.5 w-2.5" />
+                GAINING
               </Badge>
             )}
           </div>

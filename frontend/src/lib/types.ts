@@ -15,6 +15,7 @@ export interface Callout {
   holder_count?: number | null;
   rug_risk_score?: number | null;
   peak_market_cap?: number | null;
+  repinned_at?: string | null;
   dexscreener_url?: string;
   created_at: string;
 }

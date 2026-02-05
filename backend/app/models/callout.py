@@ -32,6 +32,7 @@ class Callout(Base):
     holder_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=None)
     rug_risk_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True, default=None)
     peak_market_cap: Mapped[Optional[float]] = mapped_column(Float, nullable=True, default=None)
+    repinned_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

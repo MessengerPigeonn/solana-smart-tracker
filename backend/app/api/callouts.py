@@ -3,7 +3,7 @@ import asyncio
 import json
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, func
+from sqlalchemy import select, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 from typing import Optional
@@ -47,8 +47,10 @@ async def list_callouts(
     count_result = await db.execute(count_query)
     total = count_result.scalar() or 0
 
+    # Sort by repinned_at if set, otherwise created_at — repinned callouts float to top
+    sort_key = func.coalesce(Callout.repinned_at, Callout.created_at)
     result = await db.execute(
-        query.order_by(Callout.created_at.desc()).offset(offset).limit(limit)
+        query.order_by(sort_key.desc()).offset(offset).limit(limit)
     )
     callouts = result.scalars().all()
 

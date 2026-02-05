@@ -21,6 +21,7 @@ class CalloutResponse(BaseModel):
     holder_count: Optional[int] = None
     rug_risk_score: Optional[float] = None
     peak_market_cap: Optional[float] = None
+    repinned_at: Optional[datetime] = None
     created_at: datetime
 
     @computed_field

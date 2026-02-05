@@ -123,6 +123,7 @@ export function CalloutFeed({ initialCallouts, enableSSE, signalFilter }: Callou
             dexscreenerUrl={c.dexscreener_url}
             currentMarketCap={currentMarketCaps[c.token_address]}
             peakMarketCap={c.peak_market_cap}
+            repinnedAt={c.repinned_at}
           />
         ))
       )}
