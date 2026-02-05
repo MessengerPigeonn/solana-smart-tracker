@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { apiFetch } from "@/lib/api";
-import { TrendingUp, Target, Trophy, BarChart3 } from "lucide-react";
+import { TrendingUp, Target, Trophy, BarChart3, Flame } from "lucide-react";
 import type { CalloutStats } from "@/lib/types";
 
 export function CalloutStatsBanner() {
@@ -91,6 +91,39 @@ export function CalloutStatsBanner() {
             </div>
           </div>
         </div>
+
+        {/* Milestone counts */}
+        {stats.milestones && (
+          <div className="mt-3 pt-3 border-t border-border/30">
+            <div className="flex items-center gap-2 mb-2">
+              <Flame className="h-3.5 w-3.5 text-amber-400" />
+              <span className="text-xs font-semibold text-muted-foreground uppercase">
+                Milestone Hits
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {([
+                { label: "+20%", value: stats.milestones.pct_20, color: "text-green-400 border-green-500/20 bg-green-500/5" },
+                { label: "+40%", value: stats.milestones.pct_40, color: "text-green-400 border-green-500/20 bg-green-500/5" },
+                { label: "+60%", value: stats.milestones.pct_60, color: "text-green-500 border-green-500/20 bg-green-500/5" },
+                { label: "+80%", value: stats.milestones.pct_80, color: "text-green-500 border-green-500/20 bg-green-500/5" },
+                { label: "2x", value: stats.milestones.x2, color: "text-emerald-400 border-emerald-500/20 bg-emerald-500/5" },
+                { label: "5x", value: stats.milestones.x5, color: "text-amber-400 border-amber-500/20 bg-amber-500/5" },
+                { label: "10x", value: stats.milestones.x10, color: "text-amber-500 border-amber-500/20 bg-amber-500/5" },
+                { label: "50x", value: stats.milestones.x50, color: "text-orange-500 border-orange-500/20 bg-orange-500/5" },
+                { label: "100x", value: stats.milestones.x100, color: "text-red-500 border-red-500/20 bg-red-500/5" },
+              ] as const).map((m) => (
+                <div
+                  key={m.label}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs font-medium ${m.color}`}
+                >
+                  <span className="opacity-70">{m.label}</span>
+                  <span className="font-bold">{m.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

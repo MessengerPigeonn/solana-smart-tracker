@@ -11,7 +11,7 @@ from app.database import get_db, async_session
 from app.models.user import User, Tier
 from app.models.callout import Callout
 from app.models.token import ScannedToken
-from app.schemas.callout import CalloutResponse, CalloutListResponse, CalloutStatsResponse, TopCalloutResponse
+from app.schemas.callout import CalloutResponse, CalloutListResponse, CalloutStatsResponse, TopCalloutResponse, MilestoneCountsResponse
 from app.middleware.auth import get_optional_user, require_tier
 
 router = APIRouter(prefix="/api/callouts", tags=["callouts"])
@@ -122,6 +122,19 @@ async def callout_stats(
     avg_ath = round(sum(ath_multipliers) / len(ath_multipliers), 2) if ath_multipliers else None
     win_rate = round(sum(1 for m in current_multipliers if m >= 1.0) / len(current_multipliers) * 100, 1) if current_multipliers else None
 
+    # Milestone counts based on ATH multipliers
+    milestones = MilestoneCountsResponse(
+        pct_20=sum(1 for m in ath_multipliers if m >= 1.2),
+        pct_40=sum(1 for m in ath_multipliers if m >= 1.4),
+        pct_60=sum(1 for m in ath_multipliers if m >= 1.6),
+        pct_80=sum(1 for m in ath_multipliers if m >= 1.8),
+        x2=sum(1 for m in ath_multipliers if m >= 2.0),
+        x5=sum(1 for m in ath_multipliers if m >= 5.0),
+        x10=sum(1 for m in ath_multipliers if m >= 10.0),
+        x50=sum(1 for m in ath_multipliers if m >= 50.0),
+        x100=sum(1 for m in ath_multipliers if m >= 100.0),
+    )
+
     return CalloutStatsResponse(
         total_calls=total_calls,
         avg_multiplier=avg_mult,
@@ -133,6 +146,7 @@ async def callout_stats(
         buy_signals=buy_signals,
         watch_signals=watch_signals,
         sell_signals=sell_signals,
+        milestones=milestones,
     )
 
 

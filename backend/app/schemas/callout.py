@@ -36,6 +36,18 @@ class CalloutListResponse(BaseModel):
     total: int
 
 
+class MilestoneCountsResponse(BaseModel):
+    pct_20: int = 0
+    pct_40: int = 0
+    pct_60: int = 0
+    pct_80: int = 0
+    x2: int = 0
+    x5: int = 0
+    x10: int = 0
+    x50: int = 0
+    x100: int = 0
+
+
 class CalloutStatsResponse(BaseModel):
     total_calls: int
     avg_multiplier: Optional[float] = None
@@ -47,6 +59,7 @@ class CalloutStatsResponse(BaseModel):
     buy_signals: int = 0
     watch_signals: int = 0
     sell_signals: int = 0
+    milestones: MilestoneCountsResponse = MilestoneCountsResponse()
 
 
 class TopCalloutResponse(BaseModel):

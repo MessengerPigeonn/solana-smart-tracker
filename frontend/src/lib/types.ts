@@ -19,6 +19,18 @@ export interface Callout {
   created_at: string;
 }
 
+export interface MilestoneCounts {
+  pct_20: number;
+  pct_40: number;
+  pct_60: number;
+  pct_80: number;
+  x2: number;
+  x5: number;
+  x10: number;
+  x50: number;
+  x100: number;
+}
+
 export interface CalloutStats {
   total_calls: number;
   avg_multiplier?: number | null;
@@ -30,6 +42,7 @@ export interface CalloutStats {
   buy_signals: number;
   watch_signals: number;
   sell_signals: number;
+  milestones: MilestoneCounts;
 }
 
 export interface TopCallout {
