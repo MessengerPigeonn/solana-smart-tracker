@@ -101,6 +101,11 @@ async def callout_stats(
         if token and token.market_cap > 0:
             mult = token.market_cap / c.market_cap
             if mult <= 50:
+                # If coin peaked >= 1.2x, floor at 1.2x benchmark
+                if c.peak_market_cap and c.peak_market_cap > 0:
+                    peak_mult = c.peak_market_cap / c.market_cap
+                    if peak_mult >= 1.2:
+                        mult = max(mult, 1.2)
                 current_multipliers.append(mult)
 
         # ATH multiplier (cap at 50x)
