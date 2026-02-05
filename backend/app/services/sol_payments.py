@@ -36,14 +36,8 @@ _sol_price_cache: dict[str, float | datetime] = {"price": 0.0, "fetched_at": dat
 SOL_PRICE_CACHE_SECONDS = 60
 
 
-async def get_sol_usd_price() -> float:
-    """Fetch current SOL/USD price from Jupiter. Cached for 60s."""
-    cached_at = _sol_price_cache.get("fetched_at", datetime.min)
-    if isinstance(cached_at, datetime) and (datetime.now() - cached_at).total_seconds() < SOL_PRICE_CACHE_SECONDS:
-        price = _sol_price_cache.get("price", 0.0)
-        if isinstance(price, (int, float)) and price > 0:
-            return float(price)
-
+async def _fetch_jupiter_price() -> float | None:
+    """Try Jupiter Price API."""
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(
@@ -54,19 +48,55 @@ async def get_sol_usd_price() -> float:
             data = resp.json()
             token_data = data.get("data", {}).get(SOL_MINT)
             if token_data and token_data.get("price"):
-                price = float(token_data["price"])
-                _sol_price_cache["price"] = price
-                _sol_price_cache["fetched_at"] = datetime.now()
-                return price
+                return float(token_data["price"])
     except Exception as e:
-        logger.warning(f"Failed to fetch SOL price from Jupiter: {e}")
+        logger.warning(f"Jupiter price fetch failed: {e}")
+    return None
 
-    # Fallback to cached price if available
+
+async def _fetch_coingecko_price() -> float | None:
+    """Try CoinGecko free API as fallback."""
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                "https://api.coingecko.com/api/v3/simple/price",
+                params={"ids": "solana", "vs_currencies": "usd"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            price = data.get("solana", {}).get("usd")
+            if price:
+                return float(price)
+    except Exception as e:
+        logger.warning(f"CoinGecko price fetch failed: {e}")
+    return None
+
+
+async def get_sol_usd_price() -> float:
+    """Fetch current SOL/USD price. Tries Jupiter then CoinGecko. Cached for 60s."""
+    cached_at = _sol_price_cache.get("fetched_at", datetime.min)
+    if isinstance(cached_at, datetime) and (datetime.now() - cached_at).total_seconds() < SOL_PRICE_CACHE_SECONDS:
+        price = _sol_price_cache.get("price", 0.0)
+        if isinstance(price, (int, float)) and price > 0:
+            return float(price)
+
+    # Try Jupiter first, then CoinGecko
+    price = await _fetch_jupiter_price()
+    if not price:
+        price = await _fetch_coingecko_price()
+
+    if price and price > 0:
+        _sol_price_cache["price"] = price
+        _sol_price_cache["fetched_at"] = datetime.now()
+        return price
+
+    # Fallback to stale cached price if available
     cached = _sol_price_cache.get("price", 0.0)
     if isinstance(cached, (int, float)) and cached > 0:
+        logger.warning(f"Using stale cached SOL price: {cached}")
         return float(cached)
 
-    raise RuntimeError("Unable to fetch SOL price")
+    raise RuntimeError("Unable to fetch SOL price from any source")
 
 
 async def get_tier_sol_amount(tier: str) -> float:
