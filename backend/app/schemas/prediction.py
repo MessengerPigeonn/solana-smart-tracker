@@ -52,3 +52,18 @@ class PredictionStatsResponse(BaseModel):
     current_streak: int = 0
     best_sport: Optional[str] = None
     sport_breakdown: Dict[str, dict] = {}
+
+
+class LiveScoreData(BaseModel):
+    prediction_id: int
+    home_score: int
+    away_score: int
+    clock: Optional[str] = None
+    period: Optional[str] = None
+    status: str  # in_progress, halftime, final, scheduled
+    bet_status: str  # winning, losing, push, unknown
+    score_display: str  # e.g. "LAL 105 - BOS 98"
+
+
+class LiveScoresResponse(BaseModel):
+    scores: Dict[int, LiveScoreData]

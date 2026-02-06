@@ -7,8 +7,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.user import User, Tier
 from app.models.prediction import Prediction
-from app.schemas.prediction import PredictionResponse, PredictionListResponse, PredictionStatsResponse
+from app.schemas.prediction import (
+    PredictionResponse,
+    PredictionListResponse,
+    PredictionStatsResponse,
+    LiveScoreData,
+    LiveScoresResponse,
+)
 from app.middleware.auth import require_tier
+from app.services.espn_scores import espn_provider
 
 router = APIRouter(prefix="/api/predictions", tags=["predictions"])
 
@@ -123,6 +130,159 @@ async def prediction_stats(
         best_sport=best_sport,
         sport_breakdown=sport_breakdown,
     )
+
+
+@router.get("/live-scores", response_model=LiveScoresResponse)
+async def live_scores(
+    user: User = Depends(require_tier(Tier.legend)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Live scores for in-progress predictions."""
+    now = datetime.now(timezone.utc)
+
+    # Fetch pending predictions where the game has started
+    query = (
+        select(Prediction)
+        .where(
+            Prediction.result == "pending",
+            Prediction.commence_time <= now,
+        )
+    )
+    rows = await db.execute(query)
+    predictions = rows.scalars().all()
+
+    if not predictions:
+        return LiveScoresResponse(scores={})
+
+    # Group predictions by sport
+    by_sport: dict[str, list] = {}
+    for p in predictions:
+        by_sport.setdefault(p.sport, []).append(p)
+
+    # Fetch live scores for each sport with pending predictions
+    scores: dict[int, LiveScoreData] = {}
+    for sport, preds in by_sport.items():
+        live_games = await espn_provider.get_live_scores(sport)
+
+        for pred in preds:
+            # Try to match this prediction to a live game
+            matched = _match_prediction_to_game(pred, live_games)
+            if not matched:
+                continue
+
+            bet_status = _compute_bet_status(pred, matched)
+            score_display = f"{matched.away_team} {matched.away_score} - {matched.home_team} {matched.home_score}"
+
+            scores[pred.id] = LiveScoreData(
+                prediction_id=pred.id,
+                home_score=matched.home_score,
+                away_score=matched.away_score,
+                clock=matched.clock,
+                period=matched.period,
+                status=matched.status,
+                bet_status=bet_status,
+                score_display=score_display,
+            )
+
+    return LiveScoresResponse(scores=scores)
+
+
+def _match_prediction_to_game(pred, live_games) -> "LiveGameScore | None":
+    """Match a prediction to a live ESPN game using team names."""
+    from app.services.espn_scores import LiveGameScore
+
+    for game in live_games:
+        home_match = (
+            espn_provider.match_team(game.home_team, pred.home_team)
+            or espn_provider.match_team(game.home_team, pred.away_team)
+        )
+        away_match = (
+            espn_provider.match_team(game.away_team, pred.away_team)
+            or espn_provider.match_team(game.away_team, pred.home_team)
+        )
+        if home_match and away_match:
+            return game
+    return None
+
+
+def _compute_bet_status(pred, game) -> str:
+    """Compute whether the bet is currently winning, losing, or push."""
+    if game.status == "scheduled":
+        return "unknown"
+
+    bet_type = pred.bet_type
+    pick_text = pred.pick
+    pick_detail = pred.pick_detail or {}
+
+    if bet_type == "moneyline":
+        # Determine which team was picked
+        picked_is_home = espn_provider.match_team(game.home_team, pick_text.replace(" ML", ""))
+        picked_is_away = espn_provider.match_team(game.away_team, pick_text.replace(" ML", ""))
+
+        if picked_is_home:
+            if game.home_score > game.away_score:
+                return "winning"
+            elif game.home_score < game.away_score:
+                return "losing"
+            return "push"
+        elif picked_is_away:
+            if game.away_score > game.home_score:
+                return "winning"
+            elif game.away_score < game.home_score:
+                return "losing"
+            return "push"
+        return "unknown"
+
+    elif bet_type == "spread":
+        # Pick format: "Team Name +/-X.X"
+        parts = pick_text.rsplit(" ", 1)
+        if len(parts) != 2:
+            return "unknown"
+        team_name = parts[0].strip()
+        spread_line = pick_detail.get("line")
+        if spread_line is None:
+            try:
+                spread_line = float(parts[1])
+            except ValueError:
+                return "unknown"
+
+        picked_is_home = espn_provider.match_team(game.home_team, team_name)
+        if picked_is_home:
+            adjusted = game.home_score + spread_line
+            if adjusted > game.away_score:
+                return "winning"
+            elif adjusted < game.away_score:
+                return "losing"
+            return "push"
+        else:
+            adjusted = game.away_score + spread_line
+            if adjusted > game.home_score:
+                return "winning"
+            elif adjusted < game.home_score:
+                return "losing"
+            return "push"
+
+    elif bet_type == "total":
+        total_line = pick_detail.get("line")
+        if total_line is None:
+            return "unknown"
+        actual_total = game.home_score + game.away_score
+        is_over = "Over" in pick_text
+
+        if is_over:
+            if actual_total > total_line:
+                return "winning"
+            elif actual_total < total_line:
+                return "losing"
+            return "push"
+        else:
+            if actual_total < total_line:
+                return "winning"
+            elif actual_total > total_line:
+                return "losing"
+            return "push"
+
+    return "unknown"
 
 
 @router.get("/live", response_model=PredictionListResponse)

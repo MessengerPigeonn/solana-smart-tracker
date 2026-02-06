@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { ChevronDown, ChevronUp, Clock } from "lucide-react";
-import type { Prediction } from "@/lib/types";
+import type { Prediction, LiveScoreData } from "@/lib/types";
 
 const SPORT_COLORS: Record<string, string> = {
   NBA: "bg-orange-500/10 text-orange-400 border-orange-500/30",
@@ -67,11 +67,52 @@ function isUpcoming(dateStr: string): boolean {
   return new Date(dateStr).getTime() > Date.now();
 }
 
-interface PredictionCardProps {
-  prediction: Prediction;
+const BET_STATUS_STYLES: Record<string, string> = {
+  winning: "bg-green-500/15 text-green-400 border-green-500/30",
+  losing: "bg-red-500/15 text-red-400 border-red-500/30",
+  push: "bg-yellow-500/15 text-yellow-400 border-yellow-500/30",
+  unknown: "bg-gray-500/15 text-gray-400 border-gray-500/30",
+};
+
+function getSpreadCoverageText(liveScore: LiveScoreData, prediction: Prediction): string | null {
+  if (prediction.bet_type === "spread") {
+    const line = (prediction.pick_detail as Record<string, number>)?.line;
+    if (line == null) return null;
+    const diff = liveScore.home_score - liveScore.away_score;
+    // Determine if we picked home or away by checking the pick text
+    const pickTeam = prediction.pick.replace(/\s[+-][\d.]+$/, "");
+    const isHome = prediction.home_team.toLowerCase().includes(pickTeam.toLowerCase()) ||
+                   pickTeam.toLowerCase().includes(prediction.home_team.toLowerCase().split(" ").pop() || "");
+    const margin = isHome ? diff + line : -diff + line;
+    if (margin > 0) return `Covering by ${Math.abs(margin).toFixed(1)}`;
+    if (margin < 0) return `Down ${Math.abs(margin).toFixed(1)} from cover`;
+    return "Right on the line";
+  }
+  if (prediction.bet_type === "total") {
+    const line = (prediction.pick_detail as Record<string, number>)?.line;
+    if (line == null) return null;
+    const total = liveScore.home_score + liveScore.away_score;
+    const diff = total - line;
+    const isOver = prediction.pick.includes("Over");
+    if (isOver) {
+      if (diff > 0) return `Over by ${diff.toFixed(1)}`;
+      if (diff < 0) return `Need ${Math.abs(diff).toFixed(1)} more`;
+      return "Right on the line";
+    } else {
+      if (diff < 0) return `Under by ${Math.abs(diff).toFixed(1)}`;
+      if (diff > 0) return `Over by ${diff.toFixed(1)}`;
+      return "Right on the line";
+    }
+  }
+  return null;
 }
 
-export function PredictionCard({ prediction }: PredictionCardProps) {
+interface PredictionCardProps {
+  prediction: Prediction;
+  liveScore?: LiveScoreData;
+}
+
+export function PredictionCard({ prediction, liveScore }: PredictionCardProps) {
   const [expanded, setExpanded] = useState(false);
 
   const sportColor = SPORT_COLORS[prediction.sport] || "bg-gray-500/10 text-gray-400 border-gray-500/30";
@@ -85,6 +126,8 @@ export function PredictionCard({ prediction }: PredictionCardProps) {
 
   const upcoming = isUpcoming(prediction.commence_time);
   const isPending = prediction.result === "pending" || !prediction.result;
+  const isLive = liveScore && (liveScore.status === "in_progress" || liveScore.status === "halftime");
+  const coverageText = liveScore ? getSpreadCoverageText(liveScore, prediction) : null;
 
   const resultVariant =
     prediction.result === "win"
@@ -104,6 +147,15 @@ export function PredictionCard({ prediction }: PredictionCardProps) {
             <div className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold ${sportColor}`}>
               {prediction.sport}
             </div>
+            {isLive && (
+              <div className="inline-flex items-center gap-1 rounded-md border border-red-500/30 bg-red-500/15 px-2 py-0.5 text-[11px] font-bold text-red-400">
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-red-500" />
+                </span>
+                LIVE
+              </div>
+            )}
             <Badge variant="secondary" className="text-[11px]">{BET_TYPE_LABELS[prediction.bet_type] || prediction.bet_type}</Badge>
           </div>
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -114,20 +166,54 @@ export function PredictionCard({ prediction }: PredictionCardProps) {
           </div>
         </div>
 
-        {/* Row 2: Matchup */}
-        <div className="mb-2">
-          <p className="text-sm font-medium">{prediction.away_team} @ {prediction.home_team}</p>
-          <p className="text-[11px] text-muted-foreground">
-            {formatFullDate(prediction.commence_time)}
-            {prediction.league && ` \u2022 ${prediction.league}`}
-          </p>
-        </div>
+        {/* Row 2: Matchup / Live Scoreboard */}
+        {isLive ? (
+          <div className="mb-2 rounded-lg border border-red-500/20 bg-red-500/5 p-2">
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-bold text-center flex-1">
+                <span>{prediction.away_team}</span>
+                <span className="mx-2 text-lg font-mono text-foreground">
+                  {liveScore.away_score}
+                </span>
+                <span className="text-muted-foreground mx-1">-</span>
+                <span className="mx-2 text-lg font-mono text-foreground">
+                  {liveScore.home_score}
+                </span>
+                <span>{prediction.home_team}</span>
+              </div>
+            </div>
+            <div className="text-center mt-1">
+              <span className="text-[11px] text-red-400 font-medium">
+                {liveScore.period && `${liveScore.period} `}
+                {liveScore.clock || (liveScore.status === "halftime" ? "Halftime" : "")}
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="mb-2">
+            <p className="text-sm font-medium">{prediction.away_team} @ {prediction.home_team}</p>
+            <p className="text-[11px] text-muted-foreground">
+              {formatFullDate(prediction.commence_time)}
+              {prediction.league && ` \u2022 ${prediction.league}`}
+            </p>
+          </div>
+        )}
 
         {/* Row 3: Pick + Odds (prominent) */}
         <div className="flex items-center justify-between mb-3 p-2 rounded-lg bg-muted/40 border border-border/20">
           <div>
-            <p className="text-sm font-bold">{prediction.pick}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-bold">{prediction.pick}</p>
+              {isLive && liveScore.bet_status !== "unknown" && (
+                <div className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-bold uppercase ${BET_STATUS_STYLES[liveScore.bet_status]}`}>
+                  {liveScore.bet_status}
+                </div>
+              )}
+            </div>
             <span className="text-[10px] text-muted-foreground">{prediction.best_bookmaker}</span>
+            {isLive && coverageText && (
+              <p className="text-[10px] text-muted-foreground mt-0.5">{coverageText}</p>
+            )}
           </div>
           <div className="text-right">
             <p className={`text-lg font-bold font-mono ${prediction.best_odds > 0 ? "text-green-400" : "text-foreground"}`}>

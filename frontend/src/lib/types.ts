@@ -156,6 +156,17 @@ export interface Prediction {
   odds_display: string;
 }
 
+export interface LiveScoreData {
+  prediction_id: number;
+  home_score: number;
+  away_score: number;
+  clock: string | null;
+  period: string | null;
+  status: string;
+  bet_status: "winning" | "losing" | "push" | "unknown";
+  score_display: string;
+}
+
 export interface PredictionStats {
   total_predictions: number;
   win_rate: number | null;

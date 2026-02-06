@@ -9,7 +9,7 @@ import { PredictionStatsBanner } from "@/components/prediction-stats-banner";
 import { apiFetch } from "@/lib/api";
 import { getMe, type User } from "@/lib/auth";
 import { Trophy, Flame, Clock, Lock } from "lucide-react";
-import type { Prediction, PredictionStats } from "@/lib/types";
+import type { Prediction, PredictionStats, LiveScoreData } from "@/lib/types";
 
 type TabFilter = "all" | "live" | "settled";
 type SportFilter = "all" | "NBA" | "NFL" | "MLB" | "NHL" | "UFC" | "Soccer";
@@ -23,6 +23,7 @@ export default function PredictionsPage() {
   const [tab, setTab] = useState<TabFilter>("all");
   const [sportFilter, setSportFilter] = useState<SportFilter>("all");
   const [total, setTotal] = useState(0);
+  const [liveScores, setLiveScores] = useState<Record<number, LiveScoreData>>({});
 
   useEffect(() => {
     async function load() {
@@ -67,6 +68,34 @@ export default function PredictionsPage() {
       }
     }, 60000);
     return () => clearInterval(interval);
+  }, [user, tab]);
+
+  // Poll live scores every 30s when on "live" or "all" tab
+  useEffect(() => {
+    if (user?.tier !== "legend") return;
+    if (tab === "settled") return;
+
+    let cancelled = false;
+    const fetchLiveScores = async () => {
+      try {
+        const data = await apiFetch<{ scores: Record<number, LiveScoreData> }>(
+          "/api/predictions/live-scores"
+        );
+        if (!cancelled) {
+          setLiveScores(data.scores);
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    // Fetch immediately then poll
+    fetchLiveScores();
+    const interval = setInterval(fetchLiveScores, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, [user, tab]);
 
   const handleTabChange = async (newTab: TabFilter) => {
@@ -211,7 +240,7 @@ export default function PredictionsPage() {
       ) : (
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           {filtered.map((prediction) => (
-            <PredictionCard key={prediction.id} prediction={prediction} />
+            <PredictionCard key={prediction.id} prediction={prediction} liveScore={liveScores[prediction.id]} />
           ))}
         </div>
       )}
