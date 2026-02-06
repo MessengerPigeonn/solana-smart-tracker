@@ -329,6 +329,26 @@ class ESPNScoreProvider:
             strength = item.get("strength", {})
             if isinstance(strength, dict) and strength.get("text"):
                 extras["strength"] = strength["text"]
+        elif sport == "Soccer":
+            # Field position data for pitch visualization (0-1 normalized)
+            fx = item.get("fieldPositionX", 0) or 0
+            fy = item.get("fieldPositionY", 0) or 0
+            fx2 = item.get("fieldPosition2X", 0) or 0
+            fy2 = item.get("fieldPosition2Y", 0) or 0
+            if fx or fy:
+                extras["fieldX"] = fx
+                extras["fieldY"] = fy
+            if fx2 or fy2:
+                extras["fieldX2"] = fx2
+                extras["fieldY2"] = fy2
+            # Soccer event subtype for icons
+            type_obj_soccer = item.get("type", {})
+            if isinstance(type_obj_soccer, dict) and type_obj_soccer.get("type"):
+                extras["eventType"] = type_obj_soccer["type"]
+            if item.get("redCard"):
+                extras["redCard"] = True
+            if item.get("yellowCard"):
+                extras["yellowCard"] = True
 
         return PlayByPlayEntry(
             id=play_id,
