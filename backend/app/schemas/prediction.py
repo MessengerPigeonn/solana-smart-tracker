@@ -63,7 +63,37 @@ class LiveScoreData(BaseModel):
     status: str  # in_progress, halftime, final, scheduled
     bet_status: str  # winning, losing, push, unknown
     score_display: str  # e.g. "LAL 105 - BOS 98"
+    espn_event_id: Optional[str] = None
 
 
 class LiveScoresResponse(BaseModel):
     scores: Dict[int, LiveScoreData]
+
+
+class PlayByPlayEntryResponse(BaseModel):
+    id: str
+    sequence_number: int
+    text: str
+    short_text: Optional[str] = None
+    clock: Optional[str] = None
+    period: Optional[str] = None
+    period_number: int
+    home_score: int
+    away_score: int
+    scoring_play: bool
+    score_value: int
+    play_type: Optional[str] = None
+    team_id: Optional[str] = None
+    wallclock: Optional[str] = None
+    extras: Dict = {}
+
+
+class PlayByPlayResponse(BaseModel):
+    event_id: str
+    sport: str
+    total_plays: int
+    plays: List[PlayByPlayEntryResponse]
+    home_team: str
+    away_team: str
+    home_score: int
+    away_score: int

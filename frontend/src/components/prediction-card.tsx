@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { ChevronDown, ChevronUp, Clock } from "lucide-react";
+import { PlayByPlayFeed } from "@/components/play-by-play-feed";
 import type { Prediction, LiveScoreData } from "@/lib/types";
 
 const SPORT_COLORS: Record<string, string> = {
@@ -197,6 +198,15 @@ export function PredictionCard({ prediction, liveScore }: PredictionCardProps) {
               {prediction.league && ` \u2022 ${prediction.league}`}
             </p>
           </div>
+        )}
+
+        {/* Play-by-Play Feed */}
+        {(isLive || liveScore?.status === "final") && (
+          <PlayByPlayFeed
+            predictionId={prediction.id}
+            sport={prediction.sport}
+            isLive={!!isLive}
+          />
         )}
 
         {/* Row 3: Pick + Odds (prominent) */}

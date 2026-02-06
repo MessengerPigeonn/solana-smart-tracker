@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 import httpx
@@ -19,7 +20,17 @@ ESPN_ENDPOINTS: dict[str, str] = {
     "UFC": "https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboard",
 }
 
+# ESPN Core Plays API sport/league path mapping
+ESPN_SPORT_PATHS: dict[str, str] = {
+    "NBA": "basketball/nba",
+    "NFL": "football/nfl",
+    "MLB": "baseball/mlb",
+    "NHL": "hockey/nhl",
+    "Soccer": "soccer/eng.1",
+}
+
 CACHE_TTL_SECONDS = 30
+PLAYS_CACHE_TTL_SECONDS = 30
 
 
 @dataclass
@@ -32,6 +43,26 @@ class LiveGameScore:
     period: Optional[str]
     status: str  # "in_progress" | "halftime" | "final" | "scheduled"
     sport: str
+    event_id: Optional[str] = None
+
+
+@dataclass
+class PlayByPlayEntry:
+    id: str
+    sequence_number: int
+    text: str
+    short_text: Optional[str]
+    clock: Optional[str]
+    period: Optional[str]
+    period_number: int
+    home_score: int
+    away_score: int
+    scoring_play: bool
+    score_value: int
+    play_type: Optional[str]
+    team_id: Optional[str]
+    wallclock: Optional[str]
+    extras: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -40,11 +71,18 @@ class _CacheEntry:
     timestamp: float
 
 
+@dataclass
+class _PlaysCacheEntry:
+    plays: list[PlayByPlayEntry]
+    timestamp: float
+
+
 class ESPNScoreProvider:
     """Fetches live game scores from ESPN's public scoreboard API."""
 
     def __init__(self) -> None:
         self._cache: dict[str, _CacheEntry] = {}
+        self._plays_cache: dict[str, _PlaysCacheEntry] = {}
 
     async def get_live_scores(self, sport: str) -> list[LiveGameScore]:
         """Return live game scores for a sport, using a 30s in-memory cache."""
@@ -69,8 +107,9 @@ class ESPNScoreProvider:
 
         scores: list[LiveGameScore] = []
         for event in data.get("events", []):
+            event_id = event.get("id")
             for comp in event.get("competitions", []):
-                parsed = self._parse_competition(comp, sport)
+                parsed = self._parse_competition(comp, sport, event_id=event_id)
                 if parsed:
                     scores.append(parsed)
 
@@ -78,7 +117,7 @@ class ESPNScoreProvider:
         return scores
 
     def _parse_competition(
-        self, comp: dict, sport: str
+        self, comp: dict, sport: str, event_id: Optional[str] = None
     ) -> Optional[LiveGameScore]:
         """Extract teams, scores, clock, period, and status from an ESPN competition."""
         competitors = comp.get("competitors", [])
@@ -140,6 +179,7 @@ class ESPNScoreProvider:
             period=period_str if status in ("in_progress", "halftime") else None,
             status=status,
             sport=sport,
+            event_id=event_id,
         )
 
     @staticmethod
@@ -163,6 +203,133 @@ class ESPNScoreProvider:
         elif sport == "UFC":
             return f"R{period}"
         return str(period)
+
+    async def get_play_by_play(
+        self,
+        event_id: str,
+        sport: str,
+        home_team: str,
+        away_team: str,
+    ) -> tuple[list[PlayByPlayEntry], int]:
+        """Fetch recent play-by-play data for an event.
+
+        Uses a 2-request strategy: probe for page count, then fetch last page.
+        Returns (plays, total_plays) where plays are most recent 25, reverse-sorted.
+        """
+        now = time.time()
+        cached = self._plays_cache.get(event_id)
+        if cached and (now - cached.timestamp) < PLAYS_CACHE_TTL_SECONDS:
+            return cached.plays, len(cached.plays)
+
+        sport_path = ESPN_SPORT_PATHS.get(sport)
+        if not sport_path:
+            return [], 0
+
+        base_url = (
+            f"https://sports.core.api.espn.com/v2/sports/{sport_path}"
+            f"/events/{event_id}/competitions/{event_id}/plays"
+        )
+
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                # Step 1: Probe for page count
+                probe_resp = await client.get(base_url, params={"limit": 1, "page": 1})
+                probe_resp.raise_for_status()
+                probe_data = probe_resp.json()
+                page_count = probe_data.get("pageCount", 1)
+                total_plays = probe_data.get("count", 0)
+
+                # Step 2: Fetch last page
+                last_resp = await client.get(base_url, params={"limit": 100, "page": page_count})
+                last_resp.raise_for_status()
+                last_data = last_resp.json()
+        except Exception as e:
+            logger.warning("ESPN plays fetch failed for event %s: %s", event_id, e)
+            return cached.plays if cached else [], 0
+
+        items = last_data.get("items", [])
+        plays = []
+        for item in items:
+            parsed = self._parse_play(item, sport)
+            if parsed:
+                plays.append(parsed)
+
+        # Sort by sequence_number descending (most recent first), take 25
+        plays.sort(key=lambda p: p.sequence_number, reverse=True)
+        plays = plays[:25]
+
+        self._plays_cache[event_id] = _PlaysCacheEntry(plays=plays, timestamp=now)
+        return plays, total_plays
+
+    def _parse_play(self, item: dict, sport: str) -> Optional[PlayByPlayEntry]:
+        """Parse a single play item from the ESPN Core Plays API."""
+        play_id = str(item.get("id", ""))
+        text = item.get("text", "")
+        if not text:
+            return None
+
+        # Extract team_id from team.$ref URL
+        team_id = None
+        team_ref = item.get("team", {}).get("$ref", "") if isinstance(item.get("team"), dict) else ""
+        if team_ref:
+            match = re.search(r"/teams/(\d+)", team_ref)
+            if match:
+                team_id = match.group(1)
+
+        # Period info
+        period_obj = item.get("period", {})
+        period_number = period_obj.get("number", 0) if isinstance(period_obj, dict) else 0
+        period_text = period_obj.get("displayValue") if isinstance(period_obj, dict) else None
+
+        clock_obj = item.get("clock", {})
+        clock = clock_obj.get("displayValue") if isinstance(clock_obj, dict) else None
+
+        # Score
+        home_score = int(item.get("homeScore", 0) or 0)
+        away_score = int(item.get("awayScore", 0) or 0)
+
+        # Type
+        play_type_obj = item.get("type", {})
+        play_type = play_type_obj.get("text") if isinstance(play_type_obj, dict) else None
+
+        # Sport-specific extras
+        extras: dict = {}
+        if sport == "NFL":
+            end = item.get("end", {})
+            if isinstance(end, dict):
+                if end.get("down"):
+                    extras["down"] = end["down"]
+                if end.get("distance"):
+                    extras["distance"] = end["distance"]
+            if item.get("statYardage") is not None:
+                extras["yards"] = item["statYardage"]
+        elif sport == "MLB":
+            if item.get("pitchCount") is not None:
+                extras["pitchCount"] = item["pitchCount"]
+            if item.get("outs") is not None:
+                extras["outs"] = item["outs"]
+        elif sport == "NHL":
+            strength = item.get("strength", {})
+            if isinstance(strength, dict) and strength.get("text"):
+                extras["strength"] = strength["text"]
+
+        return PlayByPlayEntry(
+            id=play_id,
+            sequence_number=int(item.get("sequenceNumber", 0) or 0),
+            text=text,
+            short_text=item.get("shortText"),
+            clock=clock,
+            period=period_text,
+            period_number=period_number,
+            home_score=home_score,
+            away_score=away_score,
+            scoring_play=bool(item.get("scoringPlay", False)),
+            score_value=int(item.get("scoreValue", 0) or 0),
+            play_type=play_type,
+            team_id=team_id,
+            wallclock=item.get("wallclock"),
+            extras=extras,
+        )
 
     @staticmethod
     def match_team(espn_name: str, our_name: str) -> bool:

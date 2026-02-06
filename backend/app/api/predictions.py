@@ -1,7 +1,7 @@
 from __future__ import annotations
 from datetime import datetime, timezone, timedelta
 from typing import Optional
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
@@ -13,6 +13,8 @@ from app.schemas.prediction import (
     PredictionStatsResponse,
     LiveScoreData,
     LiveScoresResponse,
+    PlayByPlayEntryResponse,
+    PlayByPlayResponse,
 )
 from app.middleware.auth import require_tier
 from app.services.espn_scores import espn_provider
@@ -182,9 +184,71 @@ async def live_scores(
                 status=matched.status,
                 bet_status=bet_status,
                 score_display=score_display,
+                espn_event_id=matched.event_id,
             )
 
     return LiveScoresResponse(scores=scores)
+
+
+@router.get("/{prediction_id}/plays", response_model=PlayByPlayResponse)
+async def get_plays(
+    prediction_id: int,
+    user: User = Depends(require_tier(Tier.legend)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Play-by-play feed for a prediction's game."""
+    result = await db.execute(
+        select(Prediction).where(Prediction.id == prediction_id)
+    )
+    pred = result.scalar_one_or_none()
+    if not pred:
+        raise HTTPException(status_code=404, detail="Prediction not found")
+
+    # Find matching live game to get event_id
+    live_games = await espn_provider.get_live_scores(pred.sport)
+    matched = _match_prediction_to_game(pred, live_games)
+    if not matched or not matched.event_id:
+        raise HTTPException(status_code=404, detail="No live game found for this prediction")
+
+    if matched.status not in ("in_progress", "halftime", "final"):
+        raise HTTPException(status_code=404, detail="Game has not started yet")
+
+    plays, total_plays = await espn_provider.get_play_by_play(
+        event_id=matched.event_id,
+        sport=pred.sport,
+        home_team=matched.home_team,
+        away_team=matched.away_team,
+    )
+
+    return PlayByPlayResponse(
+        event_id=matched.event_id,
+        sport=pred.sport,
+        total_plays=total_plays,
+        plays=[
+            PlayByPlayEntryResponse(
+                id=p.id,
+                sequence_number=p.sequence_number,
+                text=p.text,
+                short_text=p.short_text,
+                clock=p.clock,
+                period=p.period,
+                period_number=p.period_number,
+                home_score=p.home_score,
+                away_score=p.away_score,
+                scoring_play=p.scoring_play,
+                score_value=p.score_value,
+                play_type=p.play_type,
+                team_id=p.team_id,
+                wallclock=p.wallclock,
+                extras=p.extras,
+            )
+            for p in plays
+        ],
+        home_team=matched.home_team,
+        away_team=matched.away_team,
+        home_score=matched.home_score,
+        away_score=matched.away_score,
+    )
 
 
 def _match_prediction_to_game(pred, live_games) -> "LiveGameScore | None":

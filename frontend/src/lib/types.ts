@@ -165,6 +165,36 @@ export interface LiveScoreData {
   status: string;
   bet_status: "winning" | "losing" | "push" | "unknown";
   score_display: string;
+  espn_event_id: string | null;
+}
+
+export interface PlayByPlayEntry {
+  id: string;
+  sequence_number: number;
+  text: string;
+  short_text: string | null;
+  clock: string | null;
+  period: string | null;
+  period_number: number;
+  home_score: number;
+  away_score: number;
+  scoring_play: boolean;
+  score_value: number;
+  play_type: string | null;
+  team_id: string | null;
+  wallclock: string | null;
+  extras: Record<string, unknown>;
+}
+
+export interface PlayByPlayData {
+  event_id: string;
+  sport: string;
+  total_plays: number;
+  plays: PlayByPlayEntry[];
+  home_team: string;
+  away_team: string;
+  home_score: number;
+  away_score: number;
 }
 
 export interface PredictionStats {

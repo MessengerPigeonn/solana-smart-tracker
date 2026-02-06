@@ -184,3 +184,15 @@
 *::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--primary));
 }
+
+/* Play-by-play feed thin scrollbar */
+.play-feed-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.play-feed-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.play-feed-scroll::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.2);
+  border-radius: 2px;
+}
