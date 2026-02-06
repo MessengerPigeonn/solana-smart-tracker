@@ -77,14 +77,16 @@ export default function PredictionsPage() {
       if (newTab === "live") {
         data = await apiFetch<{ predictions: Prediction[]; total: number }>("/api/predictions/live");
       } else if (newTab === "settled") {
-        data = await apiFetch<{ predictions: Prediction[]; total: number }>("/api/predictions?result=win&limit=50");
-        // Also get losses and pushes
-        const losses = await apiFetch<{ predictions: Prediction[] }>("/api/predictions?result=loss&limit=50");
-        const pushes = await apiFetch<{ predictions: Prediction[] }>("/api/predictions?result=push&limit=50");
-        data.predictions = [...data.predictions, ...losses.predictions, ...pushes.predictions]
+        // Fetch wins, losses, and pushes in parallel
+        const [wins, losses, pushes] = await Promise.all([
+          apiFetch<{ predictions: Prediction[] }>("/api/predictions?result=win&limit=50"),
+          apiFetch<{ predictions: Prediction[] }>("/api/predictions?result=loss&limit=50"),
+          apiFetch<{ predictions: Prediction[] }>("/api/predictions?result=push&limit=50"),
+        ]);
+        const all = [...wins.predictions, ...losses.predictions, ...pushes.predictions]
           .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
           .slice(0, 50);
-        data.total = data.predictions.length;
+        data = { predictions: all, total: all.length };
       } else {
         data = await apiFetch<{ predictions: Prediction[]; total: number }>("/api/predictions?limit=50");
       }
@@ -97,10 +99,29 @@ export default function PredictionsPage() {
     }
   };
 
-  // Filter by sport (client-side)
-  const filtered = sportFilter === "all"
+  // Filter by sport, then sort: upcoming by soonest commence_time, then by confidence desc
+  const filtered = (sportFilter === "all"
     ? predictions
-    : predictions.filter((p) => p.sport === sportFilter);
+    : predictions.filter((p) => p.sport === sportFilter)
+  ).sort((a, b) => {
+    const now = Date.now();
+    const aUpcoming = new Date(a.commence_time).getTime() > now;
+    const bUpcoming = new Date(b.commence_time).getTime() > now;
+
+    // Upcoming events first
+    if (aUpcoming && !bUpcoming) return -1;
+    if (!aUpcoming && bUpcoming) return 1;
+
+    if (aUpcoming && bUpcoming) {
+      // Both upcoming: soonest first, then highest confidence
+      const timeDiff = new Date(a.commence_time).getTime() - new Date(b.commence_time).getTime();
+      if (timeDiff !== 0) return timeDiff;
+      return b.confidence - a.confidence;
+    }
+
+    // Both past: highest confidence first
+    return b.confidence - a.confidence;
+  });
 
   if (loading) {
     return (

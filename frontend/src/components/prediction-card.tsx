@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, Clock } from "lucide-react";
 import type { Prediction } from "@/lib/types";
 
 const SPORT_COLORS: Record<string, string> = {
@@ -28,9 +28,33 @@ function formatOdds(odds: number): string {
   return odds >= 0 ? `+${Math.round(odds)}` : `${Math.round(odds)}`;
 }
 
-function formatCommenceTime(dateStr: string): string {
+function formatGameTime(dateStr: string): string {
   const date = new Date(dateStr);
-  return date.toLocaleDateString("en-US", {
+  const now = new Date();
+  const diffMs = date.getTime() - now.getTime();
+
+  // If game is in the past, show the date
+  if (diffMs < 0) {
+    return date.toLocaleDateString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  }
+
+  // Show countdown for upcoming games
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 60) return `in ${diffMin}m`;
+  const diffHrs = Math.floor(diffMin / 60);
+  if (diffHrs < 24) return `in ${diffHrs}h ${diffMin % 60}m`;
+  const diffDays = Math.floor(diffHrs / 24);
+  return `in ${diffDays}d ${diffHrs % 24}h`;
+}
+
+function formatFullDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString("en-US", {
     weekday: "short",
     month: "short",
     day: "numeric",
@@ -39,16 +63,8 @@ function formatCommenceTime(dateStr: string): string {
   });
 }
 
-function getTimeAgo(dateStr: string): string {
-  const now = new Date();
-  const date = new Date(dateStr);
-  const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
+function isUpcoming(dateStr: string): boolean {
+  return new Date(dateStr).getTime() > Date.now();
 }
 
 interface PredictionCardProps {
@@ -67,6 +83,9 @@ export function PredictionCard({ prediction }: PredictionCardProps) {
         ? "bg-gradient-to-r from-yellow-500 to-amber-500"
         : "bg-gradient-to-r from-red-500 to-red-400";
 
+  const upcoming = isUpcoming(prediction.commence_time);
+  const isPending = prediction.result === "pending" || !prediction.result;
+
   const resultVariant =
     prediction.result === "win"
       ? ("teal" as const)
@@ -77,58 +96,80 @@ export function PredictionCard({ prediction }: PredictionCardProps) {
           : ("outline" as const);
 
   return (
-    <Card className="glass-card card-hover">
-      <CardContent className="pt-4">
-        {/* Header: sport badge + bet type badge + confidence + time */}
-        <div className="flex items-start justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <div className={`inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold ${sportColor}`}>
+    <Card className={`glass-card card-hover ${upcoming && isPending ? "border-primary/20" : ""}`}>
+      <CardContent className="pt-4 pb-3">
+        {/* Row 1: Sport + Bet Type + Game Time */}
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-1.5">
+            <div className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold ${sportColor}`}>
               {prediction.sport}
             </div>
-            <Badge variant="secondary">{BET_TYPE_LABELS[prediction.bet_type] || prediction.bet_type}</Badge>
-            <span className="text-xs font-medium text-muted-foreground">{prediction.confidence}% conf</span>
+            <Badge variant="secondary" className="text-[11px]">{BET_TYPE_LABELS[prediction.bet_type] || prediction.bet_type}</Badge>
           </div>
-          <span className="text-xs text-muted-foreground">{getTimeAgo(prediction.created_at)}</span>
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <Clock className="h-3 w-3" />
+            <span className={upcoming && isPending ? "text-primary font-medium" : ""}>
+              {formatGameTime(prediction.commence_time)}
+            </span>
+          </div>
         </div>
 
-        {/* Teams row */}
+        {/* Row 2: Matchup */}
         <div className="mb-2">
           <p className="text-sm font-medium">{prediction.away_team} @ {prediction.home_team}</p>
-          <p className="text-xs text-muted-foreground">
-            {formatCommenceTime(prediction.commence_time)}
+          <p className="text-[11px] text-muted-foreground">
+            {formatFullDate(prediction.commence_time)}
             {prediction.league && ` \u2022 ${prediction.league}`}
           </p>
         </div>
 
-        {/* Pick row */}
-        <div className="flex items-center gap-2 mb-2">
-          <span className="text-sm font-bold">{prediction.pick} {formatOdds(prediction.best_odds)}</span>
-          <span className="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">{prediction.best_bookmaker}</span>
-        </div>
-
-        {/* Confidence bar */}
-        <div className="mb-2">
-          <div className="flex items-center justify-between text-xs mb-1">
-            <span className="text-muted-foreground">Confidence</span>
-            <span className="font-medium">{prediction.confidence}/100</span>
+        {/* Row 3: Pick + Odds (prominent) */}
+        <div className="flex items-center justify-between mb-3 p-2 rounded-lg bg-muted/40 border border-border/20">
+          <div>
+            <p className="text-sm font-bold">{prediction.pick}</p>
+            <span className="text-[10px] text-muted-foreground">{prediction.best_bookmaker}</span>
           </div>
-          <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all ${confidenceBarClass}`}
-              style={{ width: `${confidenceWidth}%` }}
-            />
+          <div className="text-right">
+            <p className={`text-lg font-bold font-mono ${prediction.best_odds > 0 ? "text-green-400" : "text-foreground"}`}>
+              {formatOdds(prediction.best_odds)}
+            </p>
           </div>
         </div>
 
-        {/* Edge display */}
-        <div className="flex items-center gap-4 mb-2 text-sm">
-          <span className={prediction.edge >= 0 ? "text-green-400 font-medium" : "text-red-400 font-medium"}>
-            Edge: {prediction.edge >= 0 ? "+" : ""}{(prediction.edge * 100).toFixed(1)}%
-          </span>
-          <span className="text-muted-foreground text-xs">
-            Implied: {(prediction.implied_probability * 100).toFixed(1)}%
-          </span>
+        {/* Row 4: Confidence + Edge side by side */}
+        <div className="grid grid-cols-2 gap-3 mb-2">
+          <div>
+            <div className="flex items-center justify-between text-[11px] mb-1">
+              <span className="text-muted-foreground">Confidence</span>
+              <span className="font-semibold">{prediction.confidence}%</span>
+            </div>
+            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${confidenceBarClass}`}
+                style={{ width: `${confidenceWidth}%` }}
+              />
+            </div>
+          </div>
+          <div>
+            <div className="flex items-center justify-between text-[11px] mb-1">
+              <span className="text-muted-foreground">Edge</span>
+              <span className={`font-semibold ${prediction.edge > 0 ? "text-green-400" : "text-red-400"}`}>
+                {prediction.edge > 0 ? "+" : ""}{(prediction.edge * 100).toFixed(1)}%
+              </span>
+            </div>
+            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-blue-500 to-cyan-400 transition-all"
+                style={{ width: `${Math.min(prediction.edge * 100 * 5, 100)}%` }}
+              />
+            </div>
+          </div>
         </div>
+
+        {/* Implied probability */}
+        <p className="text-[11px] text-muted-foreground mb-2">
+          Implied: {(prediction.implied_probability * 100).toFixed(1)}%
+        </p>
 
         {/* Result + PnL row */}
         {prediction.result && prediction.result !== "pending" && (
@@ -136,7 +177,7 @@ export function PredictionCard({ prediction }: PredictionCardProps) {
             <Badge variant={resultVariant}>{prediction.result.toUpperCase()}</Badge>
             {prediction.pnl_units !== null && (
               <span className={`text-sm font-medium ${prediction.pnl_units >= 0 ? "text-green-400" : "text-red-400"}`}>
-                {prediction.pnl_units >= 0 ? "+" : ""}{prediction.pnl_units.toFixed(2)} units
+                {prediction.pnl_units >= 0 ? "+" : ""}{prediction.pnl_units.toFixed(2)}u
               </span>
             )}
             {prediction.actual_score && (
@@ -147,14 +188,14 @@ export function PredictionCard({ prediction }: PredictionCardProps) {
 
         {/* Parlay legs */}
         {prediction.bet_type === "parlay" && prediction.parlay_legs && prediction.parlay_legs.length > 0 && (
-          <div className="mb-2 rounded-lg border border-border/30 bg-muted/30 p-3">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+          <div className="mb-2 rounded-lg border border-border/30 bg-muted/30 p-2.5">
+            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
               Parlay Legs ({prediction.parlay_legs.length})
             </p>
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               {prediction.parlay_legs.map((leg, idx) => (
                 <div key={idx} className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
                     <span className="text-muted-foreground">{leg.sport}</span>
                     <span className="font-medium">{leg.pick}</span>
                   </div>
@@ -166,7 +207,7 @@ export function PredictionCard({ prediction }: PredictionCardProps) {
         )}
 
         {/* Reasoning (expandable) */}
-        <div className="mt-2 pt-2 border-t border-border/30">
+        <div className="pt-2 border-t border-border/30">
           <button
             onClick={() => setExpanded(!expanded)}
             className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"

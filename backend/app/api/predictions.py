@@ -40,7 +40,7 @@ async def list_predictions(
     total = count_result.scalar() or 0
 
     rows = await db.execute(
-        query.order_by(Prediction.created_at.desc()).offset(offset).limit(limit)
+        query.order_by(Prediction.commence_time.asc()).offset(offset).limit(limit)
     )
     predictions = rows.scalars().all()
 
