@@ -38,6 +38,13 @@ class Settings(BaseSettings):
     copy_trade_worker_interval: int = 5  # seconds
     jupiter_swap_api_url: str = "https://quote-api.jup.ag/v6"
 
+    # Prediction settings
+    the_odds_api_key: str = ""
+    prediction_enabled: bool = False  # kill switch
+    prediction_worker_interval: int = 900  # 15 minutes in seconds
+    prediction_min_confidence: float = 65.0
+    prediction_min_edge: float = 2.0  # minimum 2% edge
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 

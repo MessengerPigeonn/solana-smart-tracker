@@ -15,6 +15,7 @@ import {
   Brain,
   CreditCard,
   Bot,
+  Trophy,
 } from "lucide-react";
 
 const navItems = [
@@ -24,6 +25,7 @@ const navItems = [
   { href: "/dashboard/wallets", label: "Wallets", icon: Wallet },
   { href: "/dashboard/smart-money", label: "Smart Money", icon: Brain },
   { href: "/dashboard/copy-trade", label: "Copy Trade", icon: Bot },
+  { href: "/dashboard/predictions", label: "Predictions", icon: Trophy },
   { href: "/dashboard/billing", label: "Billing", icon: CreditCard },
 ];
 

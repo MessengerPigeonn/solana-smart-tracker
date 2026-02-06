@@ -119,3 +119,55 @@ export interface OpenPosition {
   unrealized_pnl_pct: number | null;
   created_at: string;
 }
+
+// Sports Predictions types
+
+export interface ParlayLeg {
+  pick: string;
+  odds: number;
+  confidence: number;
+  sport: string;
+  event: string;
+}
+
+export interface Prediction {
+  id: number;
+  sport: string;
+  league: string;
+  event_id: string;
+  home_team: string;
+  away_team: string;
+  commence_time: string;
+  bet_type: "moneyline" | "spread" | "total" | "player_prop" | "parlay";
+  pick: string;
+  pick_detail: Record<string, unknown>;
+  best_odds: number;
+  best_bookmaker: string;
+  implied_probability: number;
+  confidence: number;
+  edge: number;
+  reasoning: string;
+  parlay_legs: ParlayLeg[] | null;
+  result: "win" | "loss" | "push" | "pending" | null;
+  actual_score: string | null;
+  pnl_units: number | null;
+  settled_at: string | null;
+  created_at: string;
+  odds_display: string;
+}
+
+export interface PredictionStats {
+  total_predictions: number;
+  win_rate: number | null;
+  roi_pct: number | null;
+  current_streak: number;
+  best_sport: string | null;
+  sport_breakdown: Record<string, {
+    total: number;
+    wins: number;
+    losses: number;
+    pushes: number;
+    pnl_units: number;
+    win_rate: number;
+  }>;
+}

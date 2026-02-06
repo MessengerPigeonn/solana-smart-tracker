@@ -7,6 +7,7 @@ from app.models.payment import Payment
 from app.models.copy_trade_config import CopyTradeConfig
 from app.models.copy_trade import CopyTrade
 from app.models.trading_wallet import TradingWallet
+from app.models.prediction import Prediction
 
 __all__ = [
     "User",
@@ -18,4 +19,5 @@ __all__ = [
     "CopyTradeConfig",
     "CopyTrade",
     "TradingWallet",
+    "Prediction",
 ]
