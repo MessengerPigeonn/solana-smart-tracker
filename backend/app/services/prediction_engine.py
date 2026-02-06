@@ -581,7 +581,7 @@ async def generate_predictions(db: AsyncSession) -> list[Prediction]:
                         pick["_event_name"] = f"{event.get('away_team', '')} @ {event.get('home_team', '')}"
                         all_picks.append((pick, event, sport_key, sport_display))
 
-                # Player props: only for sports with prop markets and events within 48h
+                # Player props: only for sports with prop markets and events within 72h
                 prop_markets_str = PROP_MARKETS.get(sport_key)
                 if prop_markets_str:
                     ct_raw = event.get("commence_time")
@@ -589,18 +589,20 @@ async def generate_predictions(db: AsyncSession) -> list[Prediction]:
                         try:
                             ct = datetime.fromisoformat(ct_raw.replace("Z", "+00:00"))
                             hours_until = (ct - datetime.now(timezone.utc)).total_seconds() / 3600
-                            if 0 < hours_until <= 48:
+                            if 0 < hours_until <= 72:
                                 eid = event.get("id", "")
+                                logger.info(f"Fetching props for {sport_display} event {eid} ({hours_until:.0f}h out)")
                                 try:
                                     prop_data = await odds_provider.get_event_odds(
                                         sport_key, eid, prop_markets_str
                                     )
                                     prop_picks = _analyze_player_props(prop_data, sport_key)
-                                    for pick in prop_picks:
-                                        if pick["confidence"] >= MIN_CONFIDENCE and pick["edge"] >= MIN_EDGE:
-                                            pick["_sport_display"] = sport_display
-                                            pick["_event_name"] = f"{event.get('away_team', '')} @ {event.get('home_team', '')}"
-                                            all_picks.append((pick, event, sport_key, sport_display))
+                                    qualifying = [p for p in prop_picks if p["confidence"] >= MIN_CONFIDENCE and p["edge"] >= MIN_EDGE]
+                                    logger.info(f"Props for {eid}: {len(prop_picks)} analyzed, {len(qualifying)} qualifying")
+                                    for pick in qualifying:
+                                        pick["_sport_display"] = sport_display
+                                        pick["_event_name"] = f"{event.get('away_team', '')} @ {event.get('home_team', '')}"
+                                        all_picks.append((pick, event, sport_key, sport_display))
                                 except Exception as pe:
                                     logger.warning(f"Props fetch failed for {eid}: {pe}")
                         except (ValueError, AttributeError):
