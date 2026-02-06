@@ -232,17 +232,20 @@ class ESPNScoreProvider:
 
         try:
             async with httpx.AsyncClient(timeout=15) as client:
-                # Step 1: Probe for page count
-                probe_resp = await client.get(base_url, params={"limit": 1, "page": 1})
+                # Step 1: Probe with limit=100 to get page count at that page size
+                probe_resp = await client.get(base_url, params={"limit": 100, "page": 1})
                 probe_resp.raise_for_status()
                 probe_data = probe_resp.json()
                 page_count = probe_data.get("pageCount", 1)
                 total_plays = probe_data.get("count", 0)
 
-                # Step 2: Fetch last page
-                last_resp = await client.get(base_url, params={"limit": 100, "page": page_count})
-                last_resp.raise_for_status()
-                last_data = last_resp.json()
+                # Step 2: Fetch last page (if only 1 page, reuse probe data)
+                if page_count <= 1:
+                    last_data = probe_data
+                else:
+                    last_resp = await client.get(base_url, params={"limit": 100, "page": page_count})
+                    last_resp.raise_for_status()
+                    last_data = last_resp.json()
         except Exception as e:
             logger.warning("ESPN plays fetch failed for event %s: %s", event_id, e)
             return cached.plays if cached else [], 0
@@ -254,8 +257,8 @@ class ESPNScoreProvider:
             if parsed:
                 plays.append(parsed)
 
-        # Sort by sequence_number descending (most recent first), take 25
-        plays.sort(key=lambda p: p.sequence_number, reverse=True)
+        # Sort most recent first: use sequence_number if available, else play id (numeric)
+        plays.sort(key=lambda p: p.sequence_number or int(p.id or 0), reverse=True)
         plays = plays[:25]
 
         self._plays_cache[event_id] = _PlaysCacheEntry(plays=plays, timestamp=now)
@@ -264,7 +267,11 @@ class ESPNScoreProvider:
     def _parse_play(self, item: dict, sport: str) -> Optional[PlayByPlayEntry]:
         """Parse a single play item from the ESPN Core Plays API."""
         play_id = str(item.get("id", ""))
-        text = item.get("text", "")
+        text = item.get("text") or item.get("shortText") or ""
+        # Fall back to type description if no text (common for soccer kickoffs etc.)
+        if not text:
+            type_obj = item.get("type", {})
+            text = type_obj.get("text", "") if isinstance(type_obj, dict) else ""
         if not text:
             return None
 
@@ -280,6 +287,12 @@ class ESPNScoreProvider:
         period_obj = item.get("period", {})
         period_number = period_obj.get("number", 0) if isinstance(period_obj, dict) else 0
         period_text = period_obj.get("displayValue") if isinstance(period_obj, dict) else None
+        # Soccer periods only have number, no displayValue
+        if not period_text and period_number:
+            if sport == "Soccer":
+                period_text = "1st Half" if period_number == 1 else "2nd Half"
+            else:
+                period_text = f"Period {period_number}"
 
         clock_obj = item.get("clock", {})
         clock = clock_obj.get("displayValue") if isinstance(clock_obj, dict) else None
