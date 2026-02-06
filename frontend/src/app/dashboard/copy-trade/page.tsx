@@ -20,7 +20,7 @@ import type {
 
 export default function CopyTradePage() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
+  const [, setUser] = useState<User | null>(null);
   const [config, setConfig] = useState<CopyTradeConfig | null>(null);
   const [wallet, setWallet] = useState<TradingWallet | null>(null);
   const [trades, setTrades] = useState<CopyTradeRecord[]>([]);
