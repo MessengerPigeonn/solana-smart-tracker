@@ -44,12 +44,30 @@ async def run_scan_worker():
 
                 # Every other cycle (60s): Run trade analysis on top 30
                 if cycle % 2 == 0:
+                    analyzed_addresses = set()
                     for token in sorted_tokens[:30]:
+                        try:
+                            await analyze_token_trades(db, token.address)
+                            analyzed_addresses.add(token.address)
+                            await asyncio.sleep(0.3)
+                        except Exception as e:
+                            logger.warning(f"Failed trade analysis for {token.symbol}: {e}")
+
+                    # Also analyze newly discovered tokens so they get trade data
+                    # before their first scoring pass
+                    new_tokens = [
+                        t for t in tokens
+                        if (t.smart_money_count or 0) == 0
+                        and t.address not in analyzed_addresses
+                    ]
+                    for token in new_tokens:
                         try:
                             await analyze_token_trades(db, token.address)
                             await asyncio.sleep(0.3)
                         except Exception as e:
-                            logger.warning(f"Failed trade analysis for {token.symbol}: {e}")
+                            logger.warning(f"Failed trade analysis for new token {token.symbol}: {e}")
+                    if new_tokens:
+                        logger.info(f"Analyzed {len(new_tokens)} newly discovered tokens")
 
                 # Update smart money counts
                 await update_smart_money_counts(db)

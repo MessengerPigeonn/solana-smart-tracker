@@ -7,8 +7,6 @@ from app.database import async_session
 from app.models.token import ScannedToken
 from app.models.callout import Callout
 from app.services.print_scanner import run_print_scan
-from app.services.callout_engine import generate_callouts
-
 logger = logging.getLogger(__name__)
 
 
@@ -31,16 +29,7 @@ async def run_print_scan_worker():
                 tokens = await run_print_scan(db)
                 logger.info(f"PrintScan: processed {len(tokens)} tokens (cycle {cycle})")
 
-                # Every other cycle (30s): generate callouts
-                if cycle % 2 == 0:
-                    callouts = await generate_callouts(db)
-                    if callouts:
-                        ps_callouts = [c for c in callouts if c.scan_source == "print_scan"]
-                        if ps_callouts:
-                            logger.info(
-                                f"PrintScan: generated {len(ps_callouts)} callouts: "
-                                + ", ".join(f"{c.token_symbol}({c.signal.value}:{c.score})" for c in ps_callouts)
-                            )
+                # Callout generation handled solely by callout_worker (avoids race conditions)
 
                 # Every 20 cycles (~5 min): cleanup old print_scan tokens with no callouts
                 if cycle % 20 == 0 and cycle > 0:

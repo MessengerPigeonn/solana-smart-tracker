@@ -31,7 +31,7 @@ SKIP_ADDRESSES = {
 MIN_MCAP = 10_000        # $10K minimum
 MAX_MCAP = 50_000_000    # $50M maximum
 MAX_MCAP_FILTER = 500_000_000  # $500M — anything above is blue-chip
-MIN_LIQUIDITY = 5_000    # $5K minimum liquidity
+MIN_LIQUIDITY = 1_000    # $1K minimum at scan time (callout engine keeps $5K gate)
 
 
 def _classify_token(symbol: str, name: str, market_cap: float, liquidity: float) -> str:

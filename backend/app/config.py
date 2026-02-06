@@ -30,6 +30,14 @@ class Settings(BaseSettings):
     print_scan_interval_seconds: int = 15
     print_scan_enabled: bool = True
 
+    # Copy trade settings
+    copy_trade_encryption_key: str = ""  # 32-byte hex key for AES-256-GCM
+    copy_trade_enabled: bool = False  # global kill switch
+    copy_trade_max_sol_per_trade: float = 1.0
+    copy_trade_max_sol_per_day: float = 10.0
+    copy_trade_worker_interval: int = 5  # seconds
+    jupiter_swap_api_url: str = "https://quote-api.jup.ag/v6"
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 

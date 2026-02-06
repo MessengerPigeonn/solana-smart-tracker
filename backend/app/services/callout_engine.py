@@ -17,13 +17,14 @@ SMART_MONEY_PNL_WEIGHT = 15
 TOKEN_FRESHNESS_WEIGHT = 10
 LIQUIDITY_SAFETY_WEIGHT = 10
 
-# Thresholds (raised to reduce low-quality callouts)
-BUY_THRESHOLD = 75
-WATCH_THRESHOLD = 55
+# Thresholds (tuned to catch more high-performing tokens)
+BUY_THRESHOLD = 65
+WATCH_THRESHOLD = 45
 MIN_LIQUIDITY = 5000
 MIN_LIQUIDITY_MICRO = 1000
 
-# Dedup: only one buy/watch callout per token ever (sell callouts use 24h window)
+# Dedup: only one buy/watch callout per token within 72h (sell callouts use 24h window)
+BUY_WATCH_DEDUP_HOURS = 72
 SELL_DEDUP_HOURS = 24
 
 # Repin: resurface an existing callout if score gained significantly
@@ -312,7 +313,7 @@ async def _check_sell_signals(db: AsyncSession) -> list[Callout]:
         sell_ratio = sell_count / total
 
         # Generate SELL if sells dominate (>65%) and price is dropping
-        if sell_ratio > 0.65 and token.price_change_1h < -5:
+        if sell_ratio > 0.65 and token.price_change_1h < -5 and token.market_cap > 0:
             seen_tokens.add(callout.token_address)
             sell_callout = Callout(
                 token_address=token.address,
@@ -364,11 +365,13 @@ async def generate_callouts(db: AsyncSession) -> list[Callout]:
         if score < WATCH_THRESHOLD:
             continue
 
-        # Check for existing buy/watch callout
+        # Check for existing buy/watch callout within the dedup window (72h)
+        dedup_cutoff = datetime.now(timezone.utc) - timedelta(hours=BUY_WATCH_DEDUP_HOURS)
         existing_result = await db.execute(
             select(Callout).where(
                 Callout.token_address == token.address,
                 Callout.signal.in_([Signal.buy, Signal.watch]),
+                Callout.created_at >= dedup_cutoff,
             ).limit(1)
         )
         existing_callout = existing_result.scalars().first()

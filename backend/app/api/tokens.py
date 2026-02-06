@@ -32,9 +32,25 @@ async def list_tokens(
     mcap_max: Optional[float] = Query(None, ge=0),
     scan_source: Optional[str] = Query(None, pattern="^(trending|print_scan)$"),
     has_signal: Optional[bool] = Query(None),
+    addresses: Optional[str] = Query(None),
     user: Optional[User] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # If addresses parameter is provided, return only those tokens (bypass other filters)
+    if addresses:
+        addr_list = [a.strip() for a in addresses.split(",") if a.strip()]
+        if not addr_list:
+            return TokenListResponse(tokens=[], total=0)
+        addr_list = addr_list[:200]
+        result = await db.execute(
+            select(ScannedToken).where(ScannedToken.address.in_(addr_list))
+        )
+        tokens = result.scalars().all()
+        return TokenListResponse(
+            tokens=[TokenListItem.model_validate(t) for t in tokens],
+            total=len(tokens),
+        )
+
     # Free users: limit to 10 results
     if not user or user.tier == Tier.free:
         limit = min(limit, 10)

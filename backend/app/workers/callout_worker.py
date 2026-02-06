@@ -7,19 +7,21 @@ from app.database import async_session
 from app.models.callout import Callout
 from app.models.token import ScannedToken
 from app.services.callout_engine import generate_callouts
+from app.services.data_provider import data_provider
 
 logger = logging.getLogger(__name__)
 
 
 MAX_PEAK_MULTIPLIER = 50  # reject peaks beyond 50x callout mcap
+PEAK_UPDATE_DAYS = 30  # Track peak market cap for callouts up to 30 days
 
 
 async def _update_peak_market_caps(db):
     """Update peak_market_cap for recent callouts using current token data."""
-    seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=PEAK_UPDATE_DAYS)
     result = await db.execute(
         select(Callout).where(
-            Callout.created_at >= seven_days_ago,
+            Callout.created_at >= cutoff,
             Callout.market_cap.isnot(None),
             Callout.market_cap > 0,
         )
@@ -34,6 +36,24 @@ async def _update_peak_market_caps(db):
     )
     tokens_by_addr = {t.address: t for t in token_result.scalars().all()}
 
+    # Fetch fallback market caps for tokens not in scanned_tokens
+    missing_addresses = [a for a in addresses if a not in tokens_by_addr]
+    fallback_mcaps = {}
+    if missing_addresses:
+        try:
+            overviews = await data_provider.get_token_overview_batch(missing_addresses)
+            for addr, overview in overviews.items():
+                mcap = overview.get("marketCap") or overview.get("mc") or 0
+                if mcap > 0:
+                    fallback_mcaps[addr] = mcap
+            if fallback_mcaps:
+                logger.info(
+                    f"Fetched {len(fallback_mcaps)} fallback market caps "
+                    f"for tokens not in scanned_tokens"
+                )
+        except Exception as e:
+            logger.warning(f"Failed to fetch fallback market caps: {e}")
+
     updated = 0
     corrected = 0
     for callout in callouts:
@@ -44,14 +64,16 @@ async def _update_peak_market_caps(db):
             corrected += 1
 
         token = tokens_by_addr.get(callout.token_address)
-        if not token or token.market_cap <= 0:
+        if token and token.market_cap > 0:
+            # Sanity check: reject absurd market caps (mcap/liquidity > 200x is bad data)
+            if token.liquidity > 0 and token.market_cap / token.liquidity > 200:
+                continue
+            current_mcap = token.market_cap
+        elif callout.token_address in fallback_mcaps:
+            current_mcap = fallback_mcaps[callout.token_address]
+        else:
             continue
 
-        # Sanity check: reject absurd market caps (mcap/liquidity > 200x is bad data)
-        if token.liquidity > 0 and token.market_cap / token.liquidity > 200:
-            continue
-
-        current_mcap = token.market_cap
         if current_mcap > callout.market_cap * MAX_PEAK_MULTIPLIER:
             continue
 

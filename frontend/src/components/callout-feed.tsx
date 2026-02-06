@@ -30,7 +30,7 @@ export function CalloutFeed({ initialCallouts, enableSSE, signalFilter }: Callou
 
       try {
         const data = await apiFetch<{ tokens: { address: string; price: number; market_cap?: number }[] }>(
-          `/api/tokens?limit=100`
+          `/api/tokens?addresses=${addresses.join(",")}`
         );
         const prices: Record<string, number> = {};
         const mcaps: Record<string, number> = {};

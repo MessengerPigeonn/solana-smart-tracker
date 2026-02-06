@@ -14,6 +14,7 @@ import {
   Wallet,
   Brain,
   CreditCard,
+  Bot,
 } from "lucide-react";
 
 const navItems = [
@@ -22,6 +23,7 @@ const navItems = [
   { href: "/dashboard/callouts", label: "Callouts", icon: Bell },
   { href: "/dashboard/wallets", label: "Wallets", icon: Wallet },
   { href: "/dashboard/smart-money", label: "Smart Money", icon: Brain },
+  { href: "/dashboard/copy-trade", label: "Copy Trade", icon: Bot },
   { href: "/dashboard/billing", label: "Billing", icon: CreditCard },
 ];
 

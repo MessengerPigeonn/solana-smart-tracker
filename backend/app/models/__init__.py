@@ -4,6 +4,9 @@ from app.models.callout import Callout
 from app.models.tracked_wallet import TrackedWallet
 from app.models.trader_snapshot import TraderSnapshot
 from app.models.payment import Payment
+from app.models.copy_trade_config import CopyTradeConfig
+from app.models.copy_trade import CopyTrade
+from app.models.trading_wallet import TradingWallet
 
 __all__ = [
     "User",
@@ -12,4 +15,7 @@ __all__ = [
     "TrackedWallet",
     "TraderSnapshot",
     "Payment",
+    "CopyTradeConfig",
+    "CopyTrade",
+    "TradingWallet",
 ]

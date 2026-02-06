@@ -24,10 +24,12 @@ async def lifespan(app: FastAPI):
     from app.workers.scan_worker import run_scan_worker
     from app.workers.callout_worker import run_callout_worker
     from app.workers.print_scan_worker import run_print_scan_worker
+    from app.workers.copy_trade_worker import run_copy_trade_worker
 
     worker_tasks.append(asyncio.create_task(run_scan_worker()))
     worker_tasks.append(asyncio.create_task(run_callout_worker()))
     worker_tasks.append(asyncio.create_task(run_print_scan_worker()))
+    worker_tasks.append(asyncio.create_task(run_copy_trade_worker()))
 
     yield
 
@@ -62,7 +64,7 @@ app.add_middleware(
 )
 
 # Register route modules
-from app.api import auth, tokens, callouts, wallets, smart_money, payments
+from app.api import auth, tokens, callouts, wallets, smart_money, payments, copy_trade
 
 app.include_router(auth.router)
 app.include_router(tokens.router)
@@ -70,6 +72,7 @@ app.include_router(callouts.router)
 app.include_router(wallets.router)
 app.include_router(smart_money.router)
 app.include_router(payments.router)
+app.include_router(copy_trade.router)
 
 
 @app.get("/api/health")
