@@ -11,7 +11,8 @@ from app.models.copy_trade import CopyTrade, TradeSide, TxStatus, SellTrigger
 from app.models.trading_wallet import TradingWallet
 from app.schemas.copy_trade import (
     CopyTradeConfigUpdate, CopyTradeConfigResponse,
-    TradingWalletResponse, CopyTradeResponse, CopyTradeListResponse,
+    TradingWalletResponse, TradingWalletGenerateResponse,
+    CopyTradeResponse, CopyTradeListResponse,
     OpenPositionResponse, ManualSellRequest,
 )
 from app.middleware.auth import require_tier
@@ -86,7 +87,7 @@ async def disable_bot(
     return CopyTradeConfigResponse.model_validate(config)
 
 
-@router.post("/wallet/generate", response_model=TradingWalletResponse)
+@router.post("/wallet/generate", response_model=TradingWalletGenerateResponse)
 async def generate_trading_wallet(
     user: User = Depends(require_tier(Tier.legend)),
     db: AsyncSession = Depends(get_db),
@@ -109,7 +110,10 @@ async def generate_trading_wallet(
         db.add(config)
     else:
         config.trading_wallet_pubkey = wallet.public_key
-    return TradingWalletResponse.model_validate(wallet)
+    # Return wallet with one-time private key — never returned again
+    resp = TradingWalletGenerateResponse.model_validate(wallet)
+    resp.private_key = wallet_data["private_key_bs58"]
+    return resp
 
 
 @router.get("/wallet", response_model=Optional[TradingWalletResponse])

@@ -44,33 +44,36 @@ def decrypt_private_key(encrypted_b64: str, iv_b64: str) -> bytes:
 
 
 def generate_wallet() -> dict:
-    """Generate a new Solana keypair. Returns dict with public_key, encrypted_private_key, encryption_iv."""
+    """Generate a new Solana keypair. Returns dict with public_key, encrypted_private_key, encryption_iv, and one-time private_key_bs58."""
+    import base58 as b58
+
     try:
         from solders.keypair import Keypair
 
         kp = Keypair()
         pubkey = str(kp.pubkey())
-        secret_bytes = bytes(kp)
+        secret_bytes = bytes(kp)  # 64-byte keypair (private + public)
         encrypted_pk, iv = encrypt_private_key(secret_bytes)
         return {
             "public_key": pubkey,
             "encrypted_private_key": encrypted_pk,
             "encryption_iv": iv,
+            "private_key_bs58": b58.b58encode(secret_bytes).decode(),
         }
     except ImportError:
         from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-        import base58
 
         private_key = Ed25519PrivateKey.generate()
         private_bytes = private_key.private_bytes_raw()
         public_bytes = private_key.public_key().public_bytes_raw()
         full_keypair = private_bytes + public_bytes
-        pubkey = base58.b58encode(public_bytes).decode()
+        pubkey = b58.b58encode(public_bytes).decode()
         encrypted_pk, iv = encrypt_private_key(full_keypair)
         return {
             "public_key": pubkey,
             "encrypted_private_key": encrypted_pk,
             "encryption_iv": iv,
+            "private_key_bs58": b58.b58encode(full_keypair).decode(),
         }
 
 

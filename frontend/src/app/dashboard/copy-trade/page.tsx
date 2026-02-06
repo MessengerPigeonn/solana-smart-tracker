@@ -31,6 +31,8 @@ export default function CopyTradePage() {
   const [generatingWallet, setGeneratingWallet] = useState(false);
   const [refreshingBalance, setRefreshingBalance] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [oneTimePrivateKey, setOneTimePrivateKey] = useState<string | null>(null);
+  const [privateKeyCopied, setPrivateKeyCopied] = useState(false);
 
   const [formMaxTradeSol, setFormMaxTradeSol] = useState("0.5");
   const [formMaxDailySol, setFormMaxDailySol] = useState("5.0");
@@ -117,11 +119,27 @@ export default function CopyTradePage() {
   const handleGenerateWallet = async () => {
     setGeneratingWallet(true);
     try {
-      const w = await apiFetch<TradingWallet>("/api/copy-trade/wallet/generate", { method: "POST" });
+      const w = await apiFetch<TradingWallet & { private_key: string }>("/api/copy-trade/wallet/generate", { method: "POST" });
       setWallet(w);
+      setOneTimePrivateKey(w.private_key);
+      setPrivateKeyCopied(false);
       const c = await apiFetch<CopyTradeConfig>("/api/copy-trade/config");
       setConfig(c);
-    } catch (err: unknown) { alert(err instanceof Error ? err.message : "Failed"); } finally { setGeneratingWallet(false); }
+    } catch (err: unknown) { alert(err instanceof Error ? err.message : "Failed to generate wallet"); } finally { setGeneratingWallet(false); }
+  };
+
+  const handleDismissPrivateKey = () => {
+    if (!privateKeyCopied) {
+      if (!confirm("You have NOT copied your private key yet. Once dismissed, it can NEVER be shown again. Are you sure?")) return;
+    }
+    setOneTimePrivateKey(null);
+  };
+
+  const handleCopyPrivateKey = () => {
+    if (oneTimePrivateKey) {
+      navigator.clipboard.writeText(oneTimePrivateKey);
+      setPrivateKeyCopied(true);
+    }
   };
 
   const handleRefreshBalance = async () => {
@@ -338,6 +356,55 @@ export default function CopyTradePage() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* One-time private key modal */}
+      {oneTimePrivateKey && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="mx-4 w-full max-w-lg rounded-xl border border-red-500/40 bg-card p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-2">
+              <div className="h-8 w-8 rounded-full bg-red-500/20 flex items-center justify-center shrink-0">
+                <span className="text-red-400 text-lg font-bold">!</span>
+              </div>
+              <h2 className="text-lg font-bold text-red-400">Export Your Private Key Now</h2>
+            </div>
+
+            <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 space-y-2">
+              <p className="text-sm font-semibold text-red-400">This is the ONLY time your private key will be shown.</p>
+              <p className="text-sm text-red-300/80">Copy and store it safely immediately. Import it into Phantom, Solflare, or another Solana wallet as a backup. Once you close this dialog, the private key cannot be retrieved again.</p>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Private Key</p>
+              <div className="relative">
+                <code className="block w-full rounded-lg border border-border/50 bg-background/80 p-3 text-xs font-mono break-all select-all leading-relaxed">
+                  {oneTimePrivateKey}
+                </code>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <Button
+                variant="default"
+                className="flex-1"
+                onClick={handleCopyPrivateKey}
+              >
+                {privateKeyCopied ? "Copied!" : "Copy Private Key"}
+              </Button>
+              <Button
+                variant={privateKeyCopied ? "outline" : "destructive"}
+                className="flex-1"
+                onClick={handleDismissPrivateKey}
+              >
+                {privateKeyCopied ? "Done" : "Close Without Copying"}
+              </Button>
+            </div>
+
+            {privateKeyCopied && (
+              <p className="text-xs text-green-400 text-center">Private key copied to clipboard. Store it somewhere safe before closing.</p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

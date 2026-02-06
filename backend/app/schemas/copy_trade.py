@@ -57,6 +57,11 @@ class TradingWalletResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class TradingWalletGenerateResponse(TradingWalletResponse):
+    """One-time response that includes the private key at wallet generation."""
+    private_key: str
+
+
 # -- Trade schemas --
 
 class CopyTradeResponse(BaseModel):
