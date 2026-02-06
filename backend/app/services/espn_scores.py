@@ -20,13 +20,13 @@ ESPN_ENDPOINTS: dict[str, str] = {
     "UFC": "https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboard",
 }
 
-# ESPN Core Plays API sport/league path mapping
-ESPN_SPORT_PATHS: dict[str, str] = {
-    "NBA": "basketball/nba",
-    "NFL": "football/nfl",
-    "MLB": "baseball/mlb",
-    "NHL": "hockey/nhl",
-    "Soccer": "soccer/eng.1",
+# ESPN Core Plays API sport/league mapping: (sport_path, league_slug)
+ESPN_SPORT_LEAGUE: dict[str, tuple[str, str]] = {
+    "NBA": ("basketball", "nba"),
+    "NFL": ("football", "nfl"),
+    "MLB": ("baseball", "mlb"),
+    "NHL": ("hockey", "nhl"),
+    "Soccer": ("soccer", "eng.1"),
 }
 
 CACHE_TTL_SECONDS = 30
@@ -221,19 +221,23 @@ class ESPNScoreProvider:
         if cached and (now - cached.timestamp) < PLAYS_CACHE_TTL_SECONDS:
             return cached.plays, len(cached.plays)
 
-        sport_path = ESPN_SPORT_PATHS.get(sport)
-        if not sport_path:
+        sport_league = ESPN_SPORT_LEAGUE.get(sport)
+        if not sport_league:
             return [], 0
 
+        sport_path, league_slug = sport_league
         base_url = (
             f"https://sports.core.api.espn.com/v2/sports/{sport_path}"
-            f"/events/{event_id}/competitions/{event_id}/plays"
+            f"/leagues/{league_slug}/events/{event_id}/competitions/{event_id}/plays"
         )
 
         try:
             async with httpx.AsyncClient(timeout=15) as client:
-                # Step 1: Probe with limit=100 to get page count at that page size
-                probe_resp = await client.get(base_url, params={"limit": 100, "page": 1})
+                # ESPN Core API caps page size at 50 (returns 404 for limit>50)
+                page_size = 50
+
+                # Step 1: Probe to get page count at our page size
+                probe_resp = await client.get(base_url, params={"limit": page_size, "page": 1})
                 probe_resp.raise_for_status()
                 probe_data = probe_resp.json()
                 page_count = probe_data.get("pageCount", 1)
@@ -243,7 +247,7 @@ class ESPNScoreProvider:
                 if page_count <= 1:
                     last_data = probe_data
                 else:
-                    last_resp = await client.get(base_url, params={"limit": 100, "page": page_count})
+                    last_resp = await client.get(base_url, params={"limit": page_size, "page": page_count})
                     last_resp.raise_for_status()
                     last_data = last_resp.json()
         except Exception as e:
