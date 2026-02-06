@@ -43,8 +43,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Solana Smart Money Tracker",
-    description="Smart money analysis and callouts for Solana memecoins",
-    version="1.0.0",
+    description="Smart money analysis, callouts, and sports predictions for Solana",
+    version="1.1.0",
     lifespan=lifespan,
 )
 
