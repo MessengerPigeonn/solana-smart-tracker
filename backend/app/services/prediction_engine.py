@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.models.prediction import Prediction
-from app.services.odds_provider import odds_provider, SPORT_KEYS, ACTIVE_SPORTS
+from app.services.odds_provider import odds_provider, SPORT_KEYS, ACTIVE_SPORTS, PROP_MARKETS
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -322,6 +322,165 @@ def _analyze_total(event: dict, sport: str) -> list[dict]:
     return picks
 
 
+def _analyze_player_props(event_data: dict, sport: str) -> list[dict]:
+    """Analyze player prop markets for a single event.
+
+    Handles two patterns:
+    A. Over/Under props (pass yds, rush yds, points, etc.)
+    B. Anytime/Yes-No props (anytime TD)
+    """
+    picks = []
+    bookmakers = event_data.get("bookmakers", [])
+    if len(bookmakers) < 3:  # props available from fewer books
+        return picks
+
+    # Collect all prop outcomes across bookmakers
+    # Key: (player_name, market_key, description) -> [(price, point_or_None, bookmaker)]
+    prop_data: dict[tuple, list[tuple]] = {}
+
+    for bm in bookmakers:
+        for market in bm.get("markets", []):
+            market_key = market.get("key", "")
+            for outcome in market.get("outcomes", []):
+                name = outcome.get("name", "")
+                description = outcome.get("description", "")  # "Over"/"Under" or "Yes"
+                price = outcome.get("price")
+                point = outcome.get("point")  # None for anytime props
+                if name and price is not None and description:
+                    key = (name, market_key, description)
+                    prop_data.setdefault(key, []).append(
+                        (price, point, bm.get("key", ""))
+                    )
+
+    # Group by (player, market) to analyze
+    # For over/under: analyze Over and Under separately
+    # For anytime: only "Yes" matters
+    processed = set()
+
+    for (player, market_key, desc), entries in prop_data.items():
+        if len(entries) < 3:
+            continue
+
+        group_key = (player, market_key, desc)
+        if group_key in processed:
+            continue
+        processed.add(group_key)
+
+        # Skip "Under" and "No" — we only generate picks for Over/Yes
+        if desc in ("Under", "No"):
+            continue
+
+        is_over_under = desc == "Over"
+        is_anytime = desc == "Yes"
+
+        if not is_over_under and not is_anytime:
+            continue
+
+        if is_over_under:
+            # Over/Under prop: has point values
+            points = [pt for _, pt, _ in entries if pt is not None]
+            if not points:
+                continue
+            consensus_line = sorted(points)[len(points) // 2]
+
+            # Filter entries near consensus line
+            near = [(pr, pt, bk) for pr, pt, bk in entries
+                    if pt is not None and abs(pt - consensus_line) <= 0.5]
+            if len(near) < 3:
+                continue
+
+            implied_probs = [american_to_implied(pr) for pr, _, _ in near]
+            consensus_prob = sum(implied_probs) / len(implied_probs)
+
+            # Best entry: lowest line with best price for Over
+            best_entry = min(entries, key=lambda x: (x[1] if x[1] is not None else 999, -x[0]))
+            best_price, best_point, best_book = best_entry
+            if best_point is None:
+                continue
+            best_prob = american_to_implied(best_price)
+
+            edge = consensus_prob - best_prob
+            # Line advantage bonus
+            line_diff = consensus_line - best_point
+            if line_diff > 0:
+                edge += 0.01 * line_diff
+
+            if edge < MIN_EDGE:
+                continue
+
+            # Format market name nicely
+            market_label = market_key.replace("player_", "").replace("_", " ").title()
+            pick_text = f"{player} Over {best_point} {market_label}"
+
+            num_agreeing = sum(1 for pr, _, _ in near
+                               if american_to_implied(pr) < consensus_prob + 0.01)
+            confidence = score_pick(edge, num_agreeing, best_price, sport)
+
+            reasons = [
+                f"{pick_text} at {best_price:+.0f}",
+                f"consensus line: {consensus_line}, consensus prob: {consensus_prob*100:.1f}%",
+                f"edge: {edge*100:.1f}% across {len(entries)} books",
+            ]
+
+            picks.append({
+                "bet_type": "player_prop",
+                "pick": pick_text,
+                "best_odds": best_price,
+                "line": best_point,
+                "confidence": confidence,
+                "edge": round(edge, 4),
+                "best_bookmaker": best_book,
+                "implied_probability": round(best_prob, 4),
+                "consensus_prob": round(consensus_prob, 4),
+                "num_bookmakers": len(entries),
+                "reasoning": "; ".join(reasons),
+                "prop_market": market_key,
+            })
+
+        elif is_anytime:
+            # Anytime prop (e.g. anytime TD scorer): no point, just Yes price
+            implied_probs = [american_to_implied(pr) for pr, _, _ in entries]
+            consensus_prob = sum(implied_probs) / len(implied_probs)
+
+            best_entry = max(entries, key=lambda x: x[0])
+            best_price, _, best_book = best_entry
+            best_prob = american_to_implied(best_price)
+
+            edge = consensus_prob - best_prob
+            if edge < MIN_EDGE:
+                continue
+
+            market_label = market_key.replace("player_", "").replace("_", " ").title()
+            pick_text = f"{player} {market_label}"
+
+            num_agreeing = sum(1 for pr, _, _ in entries
+                               if american_to_implied(pr) < consensus_prob + 0.01)
+            confidence = score_pick(edge, num_agreeing, best_price, sport)
+
+            reasons = [
+                f"{pick_text} at {best_price:+.0f}",
+                f"consensus prob: {consensus_prob*100:.1f}%, best implied: {best_prob*100:.1f}%",
+                f"edge: {edge*100:.1f}% across {len(entries)} books",
+            ]
+
+            picks.append({
+                "bet_type": "player_prop",
+                "pick": pick_text,
+                "best_odds": best_price,
+                "line": None,
+                "confidence": confidence,
+                "edge": round(edge, 4),
+                "best_bookmaker": best_book,
+                "implied_probability": round(best_prob, 4),
+                "consensus_prob": round(consensus_prob, 4),
+                "num_bookmakers": len(entries),
+                "reasoning": "; ".join(reasons),
+                "prop_market": market_key,
+            })
+
+    return picks
+
+
 def analyze_event(event: dict, sport: str) -> list[dict]:
     """Analyze one game event. Returns potential picks with scores."""
     picks = []
@@ -421,6 +580,31 @@ async def generate_predictions(db: AsyncSession) -> list[Prediction]:
                         pick["_sport_display"] = sport_display
                         pick["_event_name"] = f"{event.get('away_team', '')} @ {event.get('home_team', '')}"
                         all_picks.append((pick, event, sport_key, sport_display))
+
+                # Player props: only for sports with prop markets and events within 48h
+                prop_markets_str = PROP_MARKETS.get(sport_key)
+                if prop_markets_str:
+                    ct_raw = event.get("commence_time")
+                    if ct_raw:
+                        try:
+                            ct = datetime.fromisoformat(ct_raw.replace("Z", "+00:00"))
+                            hours_until = (ct - datetime.now(timezone.utc)).total_seconds() / 3600
+                            if 0 < hours_until <= 48:
+                                eid = event.get("id", "")
+                                try:
+                                    prop_data = await odds_provider.get_event_odds(
+                                        sport_key, eid, prop_markets_str
+                                    )
+                                    prop_picks = _analyze_player_props(prop_data, sport_key)
+                                    for pick in prop_picks:
+                                        if pick["confidence"] >= MIN_CONFIDENCE and pick["edge"] >= MIN_EDGE:
+                                            pick["_sport_display"] = sport_display
+                                            pick["_event_name"] = f"{event.get('away_team', '')} @ {event.get('home_team', '')}"
+                                            all_picks.append((pick, event, sport_key, sport_display))
+                                except Exception as pe:
+                                    logger.warning(f"Props fetch failed for {eid}: {pe}")
+                        except (ValueError, AttributeError):
+                            pass
         except Exception as e:
             logger.error(f"Failed to fetch/analyze odds for {sport_key}: {e}")
             continue
@@ -430,15 +614,19 @@ async def generate_predictions(db: AsyncSession) -> list[Prediction]:
         return []
 
     # Dedup: check what we already predicted in the last 24h
+    # For player_prop, use (event_id, bet_type, pick) to allow multiple different props per event
     dedup_cutoff = datetime.now(timezone.utc) - timedelta(hours=DEDUP_HOURS)
     existing_result = await db.execute(
-        select(Prediction.event_id, Prediction.bet_type).where(
+        select(Prediction.event_id, Prediction.bet_type, Prediction.pick).where(
             Prediction.created_at >= dedup_cutoff,
         )
     )
     existing_keys = set()
     for row in existing_result:
-        existing_keys.add((row[0], row[1]))
+        if row[1] == "player_prop":
+            existing_keys.add((row[0], row[1], row[2]))
+        else:
+            existing_keys.add((row[0], row[1]))
 
     new_predictions = []
     parlay_candidates = []
@@ -447,7 +635,10 @@ async def generate_predictions(db: AsyncSession) -> list[Prediction]:
         event_id = event.get("id", "")
         bet_type = pick["bet_type"]
 
-        dedup_key = (event_id, bet_type)
+        if bet_type == "player_prop":
+            dedup_key = (event_id, bet_type, pick["pick"])
+        else:
+            dedup_key = (event_id, bet_type)
         if dedup_key in existing_keys:
             continue
 
@@ -472,6 +663,8 @@ async def generate_predictions(db: AsyncSession) -> list[Prediction]:
             pick_detail["consensus_prob"] = pick["consensus_prob"]
         if pick.get("num_bookmakers"):
             pick_detail["num_bookmakers"] = pick["num_bookmakers"]
+        if pick.get("prop_market"):
+            pick_detail["prop_market"] = pick["prop_market"]
 
         prediction = Prediction(
             sport=sport_display,
@@ -568,8 +761,8 @@ async def settle_predictions(db: AsyncSession) -> int:
     settled_count = 0
 
     for pred in pending:
-        # Skip parlays for now
-        if pred.bet_type == "parlay":
+        # Skip parlays and player props (no player stat API for settlement yet)
+        if pred.bet_type in ("parlay", "player_prop"):
             continue
 
         score_event = scores_by_event.get(pred.event_id)

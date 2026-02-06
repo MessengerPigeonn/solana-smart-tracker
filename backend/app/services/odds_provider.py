@@ -22,6 +22,14 @@ SPORT_KEYS = {
 
 ACTIVE_SPORTS = list(SPORT_KEYS.values())
 
+# Player prop markets available per sport (for per-event endpoint)
+PROP_MARKETS: dict[str, str] = {
+    "americanfootball_nfl": "player_pass_tds,player_pass_yds,player_rush_yds,player_anytime_td",
+    "basketball_nba": "player_points,player_rebounds,player_assists,player_threes",
+    "icehockey_nhl": "player_points,player_assists",
+    "baseball_mlb": "batter_total_bases,pitcher_strikeouts",
+}
+
 
 class OddsProvider:
     """Client for The Odds API v4, following the BirdeyeClient singleton pattern."""
@@ -67,6 +75,28 @@ class OddsProvider:
         """Fetch odds for all upcoming events in a sport."""
         return await self._get(
             f"/sports/{sport_key}/odds",
+            params={
+                "regions": regions,
+                "markets": markets,
+                "oddsFormat": odds_format,
+            },
+        )
+
+    async def get_event_odds(
+        self,
+        sport_key: str,
+        event_id: str,
+        markets: str,
+        regions: str = "us,us2,eu",
+        odds_format: str = "american",
+    ) -> dict:
+        """Fetch odds for a single event (used for player props).
+
+        Returns a single event dict with bookmakers containing prop markets.
+        Costs 1 API credit per call.
+        """
+        return await self._get(
+            f"/sports/{sport_key}/events/{event_id}/odds",
             params={
                 "regions": regions,
                 "markets": markets,
