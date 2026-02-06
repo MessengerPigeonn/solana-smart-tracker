@@ -322,6 +322,20 @@ def _analyze_total(event: dict, sport: str) -> list[dict]:
     return picks
 
 
+PROP_MARKET_LABELS: dict[str, str] = {
+    "player_pass_tds": "Pass TDs",
+    "player_pass_yds": "Pass Yds",
+    "player_rush_yds": "Rush Yds",
+    "player_anytime_td": "Anytime TD",
+    "player_points": "Points",
+    "player_rebounds": "Rebounds",
+    "player_assists": "Assists",
+    "player_threes": "Threes",
+    "batter_total_bases": "Total Bases",
+    "pitcher_strikeouts": "Strikeouts",
+}
+
+
 def _analyze_player_props(event_data: dict, sport: str) -> list[dict]:
     """Analyze player prop markets for a single event.
 
@@ -410,7 +424,7 @@ def _analyze_player_props(event_data: dict, sport: str) -> list[dict]:
                 continue
 
             # Format market name nicely
-            market_label = market_key.replace("player_", "").replace("_", " ").title()
+            market_label = PROP_MARKET_LABELS.get(market_key, market_key.replace("player_", "").replace("_", " ").title())
             pick_text = f"{player} Over {best_point} {market_label}"
 
             num_agreeing = sum(1 for pr, _, _ in near
@@ -451,7 +465,7 @@ def _analyze_player_props(event_data: dict, sport: str) -> list[dict]:
             if edge < MIN_EDGE:
                 continue
 
-            market_label = market_key.replace("player_", "").replace("_", " ").title()
+            market_label = PROP_MARKET_LABELS.get(market_key, market_key.replace("player_", "").replace("_", " ").title())
             pick_text = f"{player} {market_label}"
 
             num_agreeing = sum(1 for pr, _, _ in entries
