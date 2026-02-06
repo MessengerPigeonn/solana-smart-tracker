@@ -342,12 +342,13 @@ def _analyze_player_props(event_data: dict, sport: str) -> list[dict]:
         for market in bm.get("markets", []):
             market_key = market.get("key", "")
             for outcome in market.get("outcomes", []):
-                name = outcome.get("name", "")
-                description = outcome.get("description", "")  # "Over"/"Under" or "Yes"
+                # Per-event endpoint: name="Over"/"Under"/"Yes", description="Player Name"
+                side = outcome.get("name", "")        # "Over", "Under", "Yes"
+                player = outcome.get("description", "")  # player name
                 price = outcome.get("price")
                 point = outcome.get("point")  # None for anytime props
-                if name and price is not None and description:
-                    key = (name, market_key, description)
+                if player and price is not None and side:
+                    key = (player, market_key, side)
                     prop_data.setdefault(key, []).append(
                         (price, point, bm.get("key", ""))
                     )
