@@ -111,9 +111,8 @@ async def generate_trading_wallet(
     else:
         config.trading_wallet_pubkey = wallet.public_key
     # Return wallet with one-time private key — never returned again
-    resp = TradingWalletGenerateResponse.model_validate(wallet)
-    resp.private_key = wallet_data["private_key_bs58"]
-    return resp
+    base = TradingWalletResponse.model_validate(wallet)
+    return TradingWalletGenerateResponse(**base.model_dump(), private_key=wallet_data["private_key_bs58"])
 
 
 @router.get("/wallet", response_model=Optional[TradingWalletResponse])
