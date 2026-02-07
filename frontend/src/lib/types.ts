@@ -148,7 +148,7 @@ export interface Prediction {
   edge: number;
   reasoning: string;
   parlay_legs: ParlayLeg[] | null;
-  result: "win" | "loss" | "push" | "pending" | null;
+  result: "win" | "loss" | "push" | "pending" | "void" | null;
   actual_score: string | null;
   pnl_units: number | null;
   settled_at: string | null;
