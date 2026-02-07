@@ -354,19 +354,22 @@ async def live_predictions(
     user: User = Depends(require_tier(Tier.legend)),
     db: AsyncSession = Depends(get_db),
 ):
-    """Pending predictions for today's games."""
+    """Predictions for games currently in progress or recently started.
+
+    Shows pending predictions where commence_time has passed (game started)
+    but within the last 12 hours (game likely still in progress or just ended).
+    """
     now = datetime.now(timezone.utc)
-    start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    end_of_day = start_of_day + timedelta(days=1)
+    cutoff = now - timedelta(hours=12)
 
     query = (
         select(Prediction)
         .where(
             Prediction.result == "pending",
-            Prediction.commence_time >= start_of_day,
-            Prediction.commence_time < end_of_day,
+            Prediction.commence_time <= now,
+            Prediction.commence_time >= cutoff,
         )
-        .order_by(Prediction.commence_time.asc())
+        .order_by(Prediction.commence_time.desc())
     )
 
     count_query = (
@@ -374,8 +377,8 @@ async def live_predictions(
         .select_from(Prediction)
         .where(
             Prediction.result == "pending",
-            Prediction.commence_time >= start_of_day,
-            Prediction.commence_time < end_of_day,
+            Prediction.commence_time <= now,
+            Prediction.commence_time >= cutoff,
         )
     )
     total = (await db.execute(count_query)).scalar() or 0
