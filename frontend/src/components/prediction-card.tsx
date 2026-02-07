@@ -135,7 +135,7 @@ export function PredictionCard({ prediction, liveScore }: PredictionCardProps) {
       ? ("teal" as const)
       : prediction.result === "loss"
         ? ("destructive" as const)
-        : prediction.result === "push"
+        : prediction.result === "push" || prediction.result === "void"
           ? ("secondary" as const)
           : ("outline" as const);
 

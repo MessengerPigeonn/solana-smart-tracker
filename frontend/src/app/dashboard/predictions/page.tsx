@@ -107,12 +107,13 @@ export default function PredictionsPage() {
         data = await apiFetch<{ predictions: Prediction[]; total: number }>("/api/predictions/live");
       } else if (newTab === "settled") {
         // Fetch wins, losses, and pushes in parallel
-        const [wins, losses, pushes] = await Promise.all([
+        const [wins, losses, pushes, voids] = await Promise.all([
           apiFetch<{ predictions: Prediction[] }>("/api/predictions?result=win&limit=50"),
           apiFetch<{ predictions: Prediction[] }>("/api/predictions?result=loss&limit=50"),
           apiFetch<{ predictions: Prediction[] }>("/api/predictions?result=push&limit=50"),
+          apiFetch<{ predictions: Prediction[] }>("/api/predictions?result=void&limit=50"),
         ]);
-        const all = [...wins.predictions, ...losses.predictions, ...pushes.predictions]
+        const all = [...wins.predictions, ...losses.predictions, ...pushes.predictions, ...voids.predictions]
           .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
           .slice(0, 50);
         data = { predictions: all, total: all.length };

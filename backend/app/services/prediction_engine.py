@@ -778,8 +778,25 @@ async def settle_predictions(db: AsyncSession) -> int:
     settled_count = 0
 
     for pred in pending:
-        # Skip parlays and player props (no player stat API for settlement yet)
-        if pred.bet_type in ("parlay", "player_prop"):
+        # Skip parlays
+        if pred.bet_type == "parlay":
+            continue
+
+        # Player props: void when game completes (no player stat API for settlement)
+        if pred.bet_type == "player_prop":
+            score_event = scores_by_event.get(pred.event_id)
+            if score_event:
+                event_scores = score_event.get("scores", [])
+                if len(event_scores) >= 2:
+                    home = score_event.get("home_team", "")
+                    away = score_event.get("away_team", "")
+                    hs = next((float(s.get("score", 0)) for s in event_scores if s.get("name") == home), 0)
+                    aws = next((float(s.get("score", 0)) for s in event_scores if s.get("name") == away), 0)
+                    pred.result = "void"
+                    pred.actual_score = f"{away} {int(aws)} - {home} {int(hs)}"[:50]
+                    pred.pnl_units = 0.0
+                    pred.settled_at = datetime.now(timezone.utc)
+                    settled_count += 1
             continue
 
         score_event = scores_by_event.get(pred.event_id)
@@ -804,7 +821,7 @@ async def settle_predictions(db: AsyncSession) -> int:
 
         home_score = score_lookup.get(home_team, 0)
         away_score = score_lookup.get(away_team, 0)
-        actual_score_str = f"{away_team} {int(away_score)} - {home_team} {int(home_score)}"
+        actual_score_str = f"{away_team} {int(away_score)} - {home_team} {int(home_score)}"[:50]
 
         prediction_result = "pending"
         pnl = 0.0

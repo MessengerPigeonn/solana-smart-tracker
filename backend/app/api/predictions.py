@@ -28,7 +28,7 @@ async def list_predictions(
     limit: int = Query(20, ge=1, le=100),
     sport: Optional[str] = Query(None),
     bet_type: Optional[str] = Query(None, pattern="^(moneyline|spread|total|player_prop|parlay)$"),
-    result: Optional[str] = Query(None, pattern="^(win|loss|push|pending)$"),
+    result: Optional[str] = Query(None, pattern="^(win|loss|push|pending|void)$"),
     user: User = Depends(require_tier(Tier.legend)),
     db: AsyncSession = Depends(get_db),
 ):
