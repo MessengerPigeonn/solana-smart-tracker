@@ -379,6 +379,136 @@ async def get_plays(
     )
 
 
+@router.get("/{prediction_id}/plays/stream")
+async def plays_stream(
+    request: Request,
+    prediction_id: int,
+    token: str = Query(...),
+):
+    """SSE stream for play-by-play updates. Pushes every ~8s, only new plays."""
+    # Validate JWT
+    payload = decode_token(token)
+    if payload.get("type") != "access":
+        raise HTTPException(status_code=401, detail="Invalid token type")
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    # Verify user + load prediction
+    async with async_session() as db:
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        if not user or user.tier != Tier.legend:
+            raise HTTPException(status_code=403, detail="Legend tier required")
+
+        result = await db.execute(
+            select(Prediction).where(Prediction.id == prediction_id)
+        )
+        pred = result.scalar_one_or_none()
+        if not pred:
+            raise HTTPException(status_code=404, detail="Prediction not found")
+        pred_sport = pred.sport
+        pred_home = pred.home_team
+        pred_away = pred.away_team
+
+    # Resolve ESPN event ID (use cache or look up once)
+    cached = _espn_event_cache.get(prediction_id)
+    if cached:
+        espn_event_id, espn_home, espn_away = cached
+    else:
+        live_games = await espn_provider.get_live_scores(pred_sport)
+        matched = _match_prediction_to_game(pred, live_games)
+        if not matched or not matched.event_id:
+            raise HTTPException(status_code=404, detail="No live game found")
+        if matched.status not in ("in_progress", "halftime", "final"):
+            raise HTTPException(status_code=404, detail="Game has not started yet")
+        espn_event_id = matched.event_id
+        espn_home = matched.home_team
+        espn_away = matched.away_team
+        _espn_event_cache[prediction_id] = (espn_event_id, espn_home, espn_away)
+
+    async def event_generator():
+        last_play_ids: set[str] = set()
+        keepalive_counter = 0
+
+        while True:
+            if await request.is_disconnected():
+                break
+
+            try:
+                plays, total_plays = await espn_provider.get_play_by_play(
+                    event_id=espn_event_id,
+                    sport=pred_sport,
+                    home_team=espn_home,
+                    away_team=espn_away,
+                )
+
+                current_play_ids = {p.id for p in plays}
+
+                # Send full payload if plays changed
+                if current_play_ids != last_play_ids:
+                    # Get current scores from plays or scoreboard
+                    home_score = plays[0].home_score if plays else 0
+                    away_score = plays[0].away_score if plays else 0
+
+                    play_dicts = [
+                        {
+                            "id": p.id,
+                            "sequence_number": p.sequence_number,
+                            "text": p.text,
+                            "short_text": p.short_text,
+                            "clock": p.clock,
+                            "period": p.period,
+                            "period_number": p.period_number,
+                            "home_score": p.home_score,
+                            "away_score": p.away_score,
+                            "scoring_play": p.scoring_play,
+                            "score_value": p.score_value,
+                            "play_type": p.play_type,
+                            "team_id": p.team_id,
+                            "wallclock": p.wallclock,
+                            "extras": p.extras,
+                        }
+                        for p in plays
+                    ]
+
+                    data = {
+                        "event_id": espn_event_id,
+                        "sport": pred_sport,
+                        "total_plays": total_plays,
+                        "plays": play_dicts,
+                        "home_team": espn_home,
+                        "away_team": espn_away,
+                        "home_score": home_score,
+                        "away_score": away_score,
+                    }
+
+                    yield f"data: {json.dumps(data)}\n\n"
+                    last_play_ids = current_play_ids
+                    keepalive_counter = 0
+                else:
+                    keepalive_counter += 1
+                    if keepalive_counter >= 4:
+                        yield ": keepalive\n\n"
+                        keepalive_counter = 0
+
+            except Exception as e:
+                logger.warning(f"SSE plays error for prediction {prediction_id}: {e}")
+                yield ": error\n\n"
+
+            await asyncio.sleep(8)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 def _match_prediction_to_game(pred, live_games) -> "LiveGameScore | None":
     """Match a prediction to a live ESPN game using team names."""
     from app.services.espn_scores import LiveGameScore

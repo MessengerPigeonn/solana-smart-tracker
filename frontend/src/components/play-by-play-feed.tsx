@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Zap, Loader2, AlertCircle } from "lucide-react";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, getSSEUrl } from "@/lib/api";
 import type { PlayByPlayData, PlayByPlayEntry } from "@/lib/types";
 
 interface PlayByPlayFeedProps {
@@ -328,6 +328,23 @@ export function PlayByPlayFeed({ predictionId, sport, isLive }: PlayByPlayFeedPr
   const [selectedPlay, setSelectedPlay] = useState<PlayByPlayEntry | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  const eventSourceRef = useRef<EventSource | null>(null);
+  const selectedPlayRef = useRef(selectedPlay);
+  selectedPlayRef.current = selectedPlay;
+  const dataRef = useRef(data);
+  dataRef.current = data;
+
+  const handlePlaysData = useCallback((result: PlayByPlayData) => {
+    setData(result);
+    setLoading(false);
+    setError(null);
+    // Auto-select most recent play with field data for soccer
+    if (sport === "Soccer" && result.plays.length > 0 && !selectedPlayRef.current) {
+      const withField = result.plays.find(p => p.extras?.fieldX);
+      if (withField) setSelectedPlay(withField);
+    }
+  }, [sport]);
+
   const fetchPlays = useCallback(async () => {
     try {
       setError(null);
@@ -335,21 +352,20 @@ export function PlayByPlayFeed({ predictionId, sport, isLive }: PlayByPlayFeedPr
         `/api/predictions/${predictionId}/plays`,
         { requireAuth: true }
       );
-      setData(result);
-      // Auto-select most recent play with field data for soccer
-      if (sport === "Soccer" && result.plays.length > 0 && !selectedPlay) {
-        const withField = result.plays.find(p => p.extras?.fieldX);
-        if (withField) setSelectedPlay(withField);
-      }
+      handlePlaysData(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load plays");
-    } finally {
       setLoading(false);
     }
-  }, [predictionId, sport, selectedPlay]);
+  }, [predictionId, handlePlaysData]);
 
   useEffect(() => {
     if (!expanded) {
+      // Clean up SSE and polling on collapse
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
@@ -358,19 +374,53 @@ export function PlayByPlayFeed({ predictionId, sport, isLive }: PlayByPlayFeedPr
     }
 
     setLoading(true);
-    fetchPlays();
 
     if (isLive) {
-      intervalRef.current = setInterval(fetchPlays, 8000);
-    }
+      // Use SSE for live games
+      const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+      if (token) {
+        const url = getSSEUrl(
+          `/api/predictions/${predictionId}/plays/stream?token=${encodeURIComponent(token)}`
+        );
+        const es = new EventSource(url);
+        eventSourceRef.current = es;
 
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
+        es.onmessage = (event) => {
+          try {
+            const result = JSON.parse(event.data) as PlayByPlayData;
+            handlePlaysData(result);
+          } catch {
+            // ignore parse errors
+          }
+        };
+
+        es.onerror = () => {
+          // EventSource auto-reconnects; on first failure fetch via REST as fallback
+          if (!dataRef.current) {
+            fetchPlays();
+          }
+        };
+
+        return () => {
+          es.close();
+          eventSourceRef.current = null;
+        };
+      } else {
+        // No token — fall back to polling
+        fetchPlays();
+        intervalRef.current = setInterval(fetchPlays, 8000);
+        return () => {
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
+        };
       }
-    };
-  }, [expanded, isLive, fetchPlays]);
+    } else {
+      // Final / non-live games: single REST fetch, no streaming
+      fetchPlays();
+    }
+  }, [expanded, isLive, predictionId, fetchPlays, handlePlaysData]);
 
   const grouped = data ? groupByPeriod(data.plays) : new Map();
   const isSoccer = sport === "Soccer";
