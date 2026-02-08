@@ -155,10 +155,12 @@ async def _score_micro_token(db: AsyncSession, token: ScannedToken) -> tuple[flo
     # --- 2. Early Buyer Quality (15 pts) ---
     early_buyer_score = 0.0
     early_smart_count = 0
+    micro_early_data = False
     try:
         from app.services.onchain_analyzer import onchain_analyzer
         early_buyers = await onchain_analyzer.get_early_buyers(token.address, limit=20)
         if early_buyers:
+            micro_early_data = True
             buyer_wallets = [b["wallet"] for b in early_buyers]
             smart_wallets_map = await _lookup_smart_wallets(db, buyer_wallets)
             early_smart_count = len(smart_wallets_map)
@@ -167,6 +169,9 @@ async def _score_micro_token(db: AsyncSession, token: ScannedToken) -> tuple[flo
                 reasons.append(f"{early_smart_count} smart wallets in first 20 buyers")
     except Exception as e:
         logger.debug(f"Early buyer analysis failed for {token.symbol}: {e}")
+    # Neutral baseline when data source is unavailable
+    if not micro_early_data:
+        early_buyer_score = 7.0
     breakdown["early_buyers"] = round(early_buyer_score, 1)
 
     # --- 3. Holder Distribution (15 pts) ---
@@ -242,6 +247,9 @@ async def _score_micro_token(db: AsyncSession, token: ScannedToken) -> tuple[flo
     social_score = 0.0
     if token.social_mention_count > 0:
         social_score = min(token.social_mention_count * 0.8, 5.0)
+    else:
+        # Neutral baseline when social data isn't collected yet
+        social_score = 2.5
     breakdown["social"] = round(social_score, 1)
 
     # --- 9. Wallet Overlap Bonus (+5) ---
@@ -250,6 +258,9 @@ async def _score_micro_token(db: AsyncSession, token: ScannedToken) -> tuple[flo
     if early_smart_count >= 3:
         overlap_bonus = 5.0
         reasons.append("smart wallet overlap with other tokens")
+    elif not micro_early_data:
+        # Neutral baseline when SmartWallet DB isn't populated yet
+        overlap_bonus = 2.0
     breakdown["wallet_overlap"] = round(overlap_bonus, 1)
 
     # --- 10. Anti-Rug Gate (-30 penalty) ---
@@ -323,13 +334,15 @@ async def score_token(
 
     # --- 1. Smart Wallet Signal (20 pts) ---
     smart_wallet_score = _weighted_smart_wallet_score(smart_wallets_map, 20.0)
-    # Also consider raw smart_money_count from scanner as fallback
-    if token.smart_money_count >= 3 and smart_wallet_score < 12:
-        smart_wallet_score = max(smart_wallet_score, 12.0)
+    # Fallback to scanner's smart_money_count when SmartWallet DB is sparse
+    if token.smart_money_count > 0 and smart_wallet_score < 5:
+        smart_wallet_score = max(smart_wallet_score, 20.0 * min(token.smart_money_count / 5.0, 1.0))
     if smart_wallet_score > 8:
         classified = [w.label for w in smart_wallets_map.values() if w.label != "unknown"]
         if classified:
             reasons.append(f"{len(smart_wallets_map)} smart wallets ({', '.join(set(classified))})")
+        elif token.smart_money_count > 0:
+            reasons.append(f"{token.smart_money_count} smart money wallets accumulating")
         else:
             reasons.append(f"{len(smart_wallets_map)} profitable wallets buying")
     breakdown["smart_wallet"] = round(smart_wallet_score, 1)
@@ -375,10 +388,12 @@ async def score_token(
     # --- 4. Early Buyer Quality (12 pts) ---
     early_buyer_score = 0.0
     early_smart_count = 0
+    early_data_available = False
     try:
         from app.services.onchain_analyzer import onchain_analyzer
         early_buyers = await onchain_analyzer.get_early_buyers(token.address, limit=20)
         if early_buyers:
+            early_data_available = True
             early_wallet_addrs = [b["wallet"] for b in early_buyers]
             early_smart = await _lookup_smart_wallets(db, early_wallet_addrs)
             early_smart_count = len(early_smart)
@@ -391,6 +406,9 @@ async def score_token(
                         smart_wallet_list.append(addr)
     except Exception as e:
         logger.debug(f"Early buyer analysis failed for {token.symbol}: {e}")
+    # Neutral baseline when data source is unavailable
+    if not early_data_available:
+        early_buyer_score = 6.0
     breakdown["early_buyers"] = round(early_buyer_score, 1)
 
     # --- 5. Price Momentum (10 pts) ---
@@ -463,14 +481,14 @@ async def score_token(
         # rugcheck_score is safety 0-100 (100 = safe)
         sec_score = 5.0 * (token.rugcheck_score / 100.0)
     else:
-        # Fallback to basic checks
-        sec_score = 5.0
+        # Fallback: assume clean unless basic checks fail
+        sec_score = 4.0
         if token.has_mint_authority:
-            sec_score -= 2.0
-        if token.has_freeze_authority:
             sec_score -= 1.5
-        if token.is_mutable:
+        if token.has_freeze_authority:
             sec_score -= 1.0
+        if token.is_mutable:
+            sec_score -= 0.5
         sec_score = max(sec_score, 0)
     breakdown["security"] = round(sec_score, 1)
 
@@ -478,8 +496,11 @@ async def score_token(
     social_score = 0.0
     if token.social_mention_count > 0:
         social_score = min(token.social_mention_count * 0.8, 3.0)
-    if token.social_velocity > 0:
-        social_score = min(social_score + token.social_velocity * 2, 5.0)
+        if token.social_velocity > 0:
+            social_score = min(social_score + token.social_velocity * 2, 5.0)
+    else:
+        # Neutral baseline when social data isn't being collected yet
+        social_score = 2.5
     breakdown["social"] = round(social_score, 1)
 
     # --- 11. Wallet Overlap Bonus (+5) ---
@@ -491,6 +512,9 @@ async def score_token(
     if reputable_count >= 3:
         overlap_bonus = 5.0
         reasons.append("multiple reputable wallets converging")
+    elif not smart_wallets_map:
+        # Neutral baseline when SmartWallet DB isn't populated yet
+        overlap_bonus = 2.0
     breakdown["wallet_overlap"] = round(overlap_bonus, 1)
 
     # --- 12. Anti-Rug Gate (-20 penalty) ---
