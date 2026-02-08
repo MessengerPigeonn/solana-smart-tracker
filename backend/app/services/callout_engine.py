@@ -13,8 +13,8 @@ from app.models.token_snapshot import TokenSnapshot
 logger = logging.getLogger(__name__)
 
 # ── Thresholds ──────────────────────────────────────────────────────────
-BUY_THRESHOLD = 65
-WATCH_THRESHOLD = 45
+BUY_THRESHOLD = 55
+WATCH_THRESHOLD = 38
 MIN_LIQUIDITY = 5000
 MIN_LIQUIDITY_MICRO = 1000
 
@@ -337,6 +337,9 @@ async def score_token(
     # Fallback to scanner's smart_money_count when SmartWallet DB is sparse
     if token.smart_money_count > 0 and smart_wallet_score < 5:
         smart_wallet_score = max(smart_wallet_score, 20.0 * min(token.smart_money_count / 5.0, 1.0))
+    # Neutral baseline when both SmartWallet DB and scanner have no data
+    if smart_wallet_score == 0 and not smart_wallets_map and (token.smart_money_count or 0) == 0:
+        smart_wallet_score = 8.0
     if smart_wallet_score > 8:
         classified = [w.label for w in smart_wallets_map.values() if w.label != "unknown"]
         if classified:
