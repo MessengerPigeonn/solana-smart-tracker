@@ -124,48 +124,73 @@ def score_pick(
     num_books: int = 0,
     consensus_prob: float = 0.5,
 ) -> float:
-    """Score a pick 0-100. Data-driven weights from 51-bet analysis.
+    """Score a pick 0-100. How likely to WIN x Is there enough value?
+
+    Shifted from arbitrage-based (price discrepancy) to winner-focused scoring.
+    High consensus probability is the dominant factor — favorites with edge
+    score highest, not penalized.
 
     Weighted factors:
-    - Edge (35%): Only factor correlated with winning. 4% = 14pts, 10% = 35pts.
-    - Implied Hit Rate (25%): Favor bets in -150 to +200 range (33-60% implied).
-    - Sharp Agreement (20%): How many sharp books back this side.
-    - Book Consensus (10%): Total books offering similar line.
+    - Consensus Strength (40%): Higher consensus prob = more likely winner.
+    - Edge Quality (20%): Enough value to be profitable, tiered not linear.
+    - Sharp Agreement (20%): Sharp books backing the side, bonus when combined
+      with high consensus.
+    - Book Breadth (10%): Number of books offering similar line.
     - Sport Reliability (10%): Major sports weighted higher.
     """
-    # Edge component: 0-35 points. Linear: 4% = 14pts, 10% = 35pts
+    # Consensus strength: 0-40 points. Rewards high consensus (likely winners).
+    if consensus_prob >= 0.72:
+        consensus_score = 40.0
+    elif consensus_prob >= 0.65:
+        consensus_score = 36.0
+    elif consensus_prob >= 0.58:
+        consensus_score = 32.0
+    elif consensus_prob >= 0.50:
+        consensus_score = 26.0
+    elif consensus_prob >= 0.40:
+        consensus_score = 18.0
+    elif consensus_prob >= 0.30:
+        consensus_score = 12.0
+    else:
+        consensus_score = 6.0
+
+    # Edge quality: 0-20 points. Tiered — enough value matters, not raw size.
     edge_pct = edge * 100
-    edge_score = min(edge_pct * 3.5, 35)
-
-    # Implied hit rate: 0-25 points. Sweet spot is 33-60% implied (roughly -150 to +200)
-    # Extreme longshots and extreme chalk both score low
-    if 0.33 <= consensus_prob <= 0.60:
-        hit_rate_score = 25.0
-    elif 0.25 <= consensus_prob < 0.33:
-        hit_rate_score = 18.0  # slight longshot
-    elif 0.60 < consensus_prob <= 0.70:
-        hit_rate_score = 18.0  # moderate favorite
-    elif consensus_prob > 0.70:
-        hit_rate_score = 10.0  # heavy chalk, low payout
+    if edge_pct >= 10:
+        edge_score = 20.0
+    elif edge_pct >= 7:
+        edge_score = 17.0
+    elif edge_pct >= 5:
+        edge_score = 14.0
+    elif edge_pct >= 4:
+        edge_score = 10.0
     else:
-        hit_rate_score = 8.0   # big longshot (<25%)
+        edge_score = edge_pct * 2.5
 
-    # Sharp agreement: 0-20 points. 0 sharps = 0, 1 = 10, 2+ = 20
+    # Sharp agreement: 0-20 points. Base + interaction bonus with consensus.
     if sharp_agreement >= 2:
-        sharp_score = 20.0
+        sharp_base = 15.0
     elif sharp_agreement == 1:
-        sharp_score = 10.0
+        sharp_base = 8.0
     else:
-        sharp_score = 0.0
+        sharp_base = 0.0
 
-    # Book consensus: 0-10 points
-    book_score = min(num_books * 1.5, 10)
+    if sharp_agreement >= 1 and consensus_prob >= 0.60:
+        sharp_bonus = 5.0
+    elif sharp_agreement >= 2 and consensus_prob >= 0.50:
+        sharp_bonus = 3.0
+    else:
+        sharp_bonus = 0.0
+
+    sharp_score = min(sharp_base + sharp_bonus, 20.0)
+
+    # Book breadth: 0-10 points
+    book_score = min(num_books * 1.5, 10.0)
 
     # Sport reliability: 0-10 points
-    sport_weight = SPORT_WEIGHTS.get(sport, 0.8)
-    sport_score = sport_weight * 10
+    sport_score = SPORT_WEIGHTS.get(sport, 0.8) * 10
 
-    total = edge_score + hit_rate_score + sharp_score + book_score + sport_score
+    total = consensus_score + edge_score + sharp_score + book_score + sport_score
     return round(min(total, 100), 1)
 
 
