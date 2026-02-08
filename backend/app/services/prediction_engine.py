@@ -925,20 +925,24 @@ async def settle_predictions(db: AsyncSession) -> int:
             odds_api_failed = True
             continue
 
-    # ── Source 2: ESPN scores fallback (matches by team name) ──────────
+    # ── Source 2: ESPN scores (always fetched as supplementary source) ──
+    # The Odds API can be slow to mark games completed. ESPN updates faster,
+    # so always fetch final games to settle predictions that Odds API missed.
     espn_final_games: dict[str, list] = {}  # sport_display -> [LiveGameScore]
-    if odds_api_failed or not scores_by_event:
-        # Fetch ESPN scores for sports with pending predictions
-        sports_needed = set(pred.sport for pred in pending)
-        for sport_display in sports_needed:
-            try:
-                games = await espn_provider.get_live_scores(sport_display)
-                final_games = [g for g in games if g.status == "final"]
-                if final_games:
-                    espn_final_games[sport_display] = final_games
-                    logger.info(f"ESPN fallback: {len(final_games)} final games for {sport_display}")
-            except Exception as e:
-                logger.warning(f"ESPN fallback failed for {sport_display}: {e}")
+    now_ts = datetime.now(timezone.utc)
+    sports_needing_espn = set(
+        pred.sport for pred in pending
+        if pred.commence_time and pred.commence_time <= now_ts
+    )
+    for sport_display in sports_needing_espn:
+        try:
+            games = await espn_provider.get_live_scores(sport_display)
+            final_games = [g for g in games if g.status == "final"]
+            if final_games:
+                espn_final_games[sport_display] = final_games
+                logger.info(f"ESPN scores: {len(final_games)} final games for {sport_display}")
+        except Exception as e:
+            logger.warning(f"ESPN scores failed for {sport_display}: {e}")
 
     settled_count = 0
     now = datetime.now(timezone.utc)
