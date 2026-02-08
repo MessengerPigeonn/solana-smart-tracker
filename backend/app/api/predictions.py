@@ -1,10 +1,14 @@
 from __future__ import annotations
+import asyncio
+import json
+import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.database import get_db
+from app.database import get_db, async_session
 from app.models.user import User, Tier
 from app.models.prediction import Prediction
 from app.schemas.prediction import (
@@ -16,8 +20,10 @@ from app.schemas.prediction import (
     PlayByPlayEntryResponse,
     PlayByPlayResponse,
 )
-from app.middleware.auth import require_tier
+from app.middleware.auth import require_tier, decode_token
 from app.services.espn_scores import espn_provider
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/predictions", tags=["predictions"])
 
@@ -188,6 +194,105 @@ async def live_scores(
             )
 
     return LiveScoresResponse(scores=scores)
+
+
+@router.get("/live-scores/stream")
+async def live_scores_stream(
+    request: Request,
+    token: str = Query(...),
+):
+    """SSE stream for live score updates. Pushes every ~8s, only when data changes.
+
+    Uses query param auth since EventSource doesn't support Authorization headers.
+    """
+    # Validate JWT
+    payload = decode_token(token)
+    if payload.get("type") != "access":
+        raise HTTPException(status_code=401, detail="Invalid token type")
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    # Verify user tier
+    async with async_session() as db:
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        if not user or user.tier != Tier.legend:
+            raise HTTPException(status_code=403, detail="Legend tier required")
+
+    async def event_generator():
+        last_payload = ""
+        keepalive_counter = 0
+
+        while True:
+            # Check if client disconnected
+            if await request.is_disconnected():
+                break
+
+            try:
+                async with async_session() as db:
+                    now = datetime.now(timezone.utc)
+                    query = select(Prediction).where(
+                        Prediction.result == "pending",
+                        Prediction.commence_time <= now,
+                    )
+                    rows = await db.execute(query)
+                    predictions = rows.scalars().all()
+
+                    scores: dict[str, dict] = {}
+                    if predictions:
+                        by_sport: dict[str, list] = {}
+                        for p in predictions:
+                            by_sport.setdefault(p.sport, []).append(p)
+
+                        for sport, preds in by_sport.items():
+                            live_games = await espn_provider.get_live_scores(sport)
+                            for pred in preds:
+                                matched = _match_prediction_to_game(pred, live_games)
+                                if not matched:
+                                    continue
+                                bet_status = _compute_bet_status(pred, matched)
+                                scores[str(pred.id)] = {
+                                    "prediction_id": pred.id,
+                                    "home_score": matched.home_score,
+                                    "away_score": matched.away_score,
+                                    "clock": matched.clock,
+                                    "period": matched.period,
+                                    "status": matched.status,
+                                    "bet_status": bet_status,
+                                    "score_display": f"{matched.away_team} {matched.away_score} - {matched.home_team} {matched.home_score}",
+                                    "espn_event_id": matched.event_id,
+                                }
+
+                    current_payload = json.dumps(scores, sort_keys=True)
+
+                    # Only send when data actually changed
+                    if current_payload != last_payload:
+                        yield f"data: {current_payload}\n\n"
+                        last_payload = current_payload
+                        keepalive_counter = 0
+                    else:
+                        keepalive_counter += 1
+                        # Send keepalive comment every ~30s (4 cycles of 8s)
+                        if keepalive_counter >= 4:
+                            yield ": keepalive\n\n"
+                            keepalive_counter = 0
+
+            except Exception as e:
+                logger.warning(f"SSE live-scores error: {e}")
+                yield f": error\n\n"
+
+            await asyncio.sleep(8)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 # Cache: prediction_id -> (espn_event_id, home_team, away_team)

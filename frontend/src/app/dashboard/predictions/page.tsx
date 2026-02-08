@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PredictionCard } from "@/components/prediction-card";
 import { PredictionStatsBanner } from "@/components/prediction-stats-banner";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, getSSEUrl } from "@/lib/api";
 import { getMe, type User } from "@/lib/auth";
 import { CalendarClock, Flame, CheckCircle, Lock } from "lucide-react";
 import type { Prediction, PredictionStats, LiveScoreData } from "@/lib/types";
@@ -81,30 +81,40 @@ export default function PredictionsPage() {
     return () => clearInterval(interval);
   }, [user, tab]);
 
-  // Poll live scores every 30s when on "live" tab
+  // SSE stream for live scores when on "live" tab
+  const eventSourceRef = useRef<EventSource | null>(null);
   useEffect(() => {
     if (user?.tier !== "legend") return;
     if (tab !== "live") return;
 
-    let cancelled = false;
-    const fetchLiveScores = async () => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+    if (!token) return;
+
+    const url = getSSEUrl(`/api/predictions/live-scores/stream?token=${encodeURIComponent(token)}`);
+    const es = new EventSource(url);
+    eventSourceRef.current = es;
+
+    es.onmessage = (event) => {
       try {
-        const data = await apiFetch<{ scores: Record<number, LiveScoreData> }>(
-          "/api/predictions/live-scores"
-        );
-        if (!cancelled) {
-          setLiveScores(data.scores);
+        const scores = JSON.parse(event.data) as Record<string, LiveScoreData>;
+        // EventSource keys are strings, convert to number keys
+        const mapped: Record<number, LiveScoreData> = {};
+        for (const [k, v] of Object.entries(scores)) {
+          mapped[Number(k)] = v;
         }
+        setLiveScores(mapped);
       } catch {
-        // ignore
+        // ignore parse errors
       }
     };
 
-    fetchLiveScores();
-    const interval = setInterval(fetchLiveScores, 10000);
+    es.onerror = () => {
+      // EventSource auto-reconnects; nothing to do here
+    };
+
     return () => {
-      cancelled = true;
-      clearInterval(interval);
+      es.close();
+      eventSourceRef.current = null;
     };
   }, [user, tab]);
 
