@@ -863,7 +863,8 @@ async def settle_predictions(db: AsyncSession) -> int:
     """Settle pending predictions by matching against completed game scores.
 
     Uses The Odds API as primary source, ESPN scoreboard as fallback.
-    Voids unsettleable predictions (player props, UFC) after 6 hours.
+    Player props settled via ESPN box scores (PTS, REB, AST, 3PT).
+    DNP Over props are voided; DNP Under props are wins.
     """
     from app.services.espn_scores import espn_provider
 
@@ -925,35 +926,18 @@ async def settle_predictions(db: AsyncSession) -> int:
         # ── Try Odds API match first ──────────────────────────────────
         score_event = scores_by_event.get(pred.event_id)
 
-        # Player props: void when game completes (no player stat API)
+        # ── Player props: settle via ESPN box scores ─────────────────
         if pred.bet_type == "player_prop":
-            game_finished = False
-            actual_score_str = None
-
-            if score_event:
-                event_scores = score_event.get("scores", [])
-                if len(event_scores) >= 2:
-                    home = score_event.get("home_team", "")
-                    away = score_event.get("away_team", "")
-                    hs = next((float(s.get("score", 0)) for s in event_scores if s.get("name") == home), 0)
-                    aws = next((float(s.get("score", 0)) for s in event_scores if s.get("name") == away), 0)
-                    actual_score_str = f"{away} {int(aws)} - {home} {int(hs)}"[:50]
-                    game_finished = True
-
-            # ESPN fallback for props
-            if not game_finished:
-                matched = _match_to_espn(pred, espn_final_games.get(pred.sport, []))
-                if matched:
-                    actual_score_str = f"{matched.away_team} {matched.away_score} - {matched.home_team} {matched.home_score}"[:50]
-                    game_finished = True
-
-            # If game started 6+ hours ago, void anyway (game is surely over)
-            if not game_finished and pred.commence_time and (now - pred.commence_time).total_seconds() > 6 * 3600:
-                game_finished = True
-
-            if game_finished:
+            prop_result = await _settle_player_prop(pred, espn_provider, score_event, espn_final_games)
+            if prop_result is not None:
+                pred.result = prop_result["result"]
+                pred.actual_score = prop_result["actual_score"]
+                pred.pnl_units = prop_result["pnl"]
+                pred.settled_at = now
+                settled_count += 1
+            elif pred.commence_time and (now - pred.commence_time).total_seconds() > 6 * 3600:
+                # Game started 6+ hours ago but no box score data — void
                 pred.result = "void"
-                pred.actual_score = actual_score_str
                 pred.pnl_units = 0.0
                 pred.settled_at = now
                 settled_count += 1
@@ -1125,3 +1109,141 @@ def _match_to_espn(pred, espn_games: list) -> "LiveGameScore | None":
         if home_match and away_match:
             return game
     return None
+
+
+async def _settle_player_prop(pred, espn_provider, score_event, espn_final_games) -> Optional[dict]:
+    """Settle a player prop bet using ESPN box score data.
+
+    Returns dict with result/actual_score/pnl, or None if game not finished yet.
+    DNP handling: Over props are voided, Under props are wins.
+    """
+    # Check if game is finished (via Odds API or ESPN scoreboard)
+    game_finished = False
+    if score_event and score_event.get("completed"):
+        game_finished = True
+    if not game_finished:
+        matched = _match_to_espn(pred, espn_final_games.get(pred.sport, []))
+        if matched:
+            game_finished = True
+
+    if not game_finished:
+        return None
+
+    # Extract prop info from pick_detail
+    import json
+    detail = json.loads(pred.pick_detail) if pred.pick_detail else {}
+    prop_market = detail.get("prop_market", "")
+    line = detail.get("line")
+    if not prop_market or line is None:
+        # Can't settle without market/line — void it
+        return {"result": "void", "actual_score": None, "pnl": 0.0}
+
+    # Parse player name and direction from pick text
+    pick = pred.pick
+    player_name = None
+    is_over = None
+    for sep in (" Over ", " Under "):
+        if sep in pick:
+            player_name = pick.split(sep)[0].strip()
+            is_over = sep.strip() == "Over"
+            break
+
+    if not player_name:
+        return {"result": "void", "actual_score": None, "pnl": 0.0}
+
+    # Find ESPN event ID — try scoreboard for the game date
+    espn_event_id = None
+    if pred.commence_time:
+        # Convert UTC commence_time to US ET date (ESPN uses ET dates)
+        et_time = pred.commence_time - timedelta(hours=5)
+        game_date = et_time.strftime("%Y%m%d")
+        espn_event_id = await espn_provider.find_espn_event_id(
+            pred.sport, pred.home_team, pred.away_team, game_date
+        )
+
+    if not espn_event_id:
+        # Couldn't find game on ESPN — void
+        return {"result": "void", "actual_score": None, "pnl": 0.0}
+
+    # Fetch box score
+    box_score = await espn_provider.get_box_score(pred.sport, espn_event_id)
+    if not box_score:
+        return {"result": "void", "actual_score": None, "pnl": 0.0}
+
+    # Find player in box score
+    norm_name = espn_provider._normalize_name(player_name)
+    player_data = box_score.get(norm_name)
+    if not player_data:
+        # Try fuzzy matching
+        for key, pd in box_score.items():
+            if espn_provider.match_player(player_name, pd.name):
+                player_data = pd
+                break
+
+    if not player_data:
+        # Player not on roster at all — void (sportsbooks void inactive player props)
+        return {"result": "void", "actual_score": None, "pnl": 0.0}
+
+    # DNP handling
+    if player_data.dnp:
+        if is_over:
+            # Over prop for DNP player → void
+            stat_label = prop_market.replace("player_", "").upper()
+            return {
+                "result": "void",
+                "actual_score": f"{player_name} DNP",
+                "pnl": 0.0,
+            }
+        else:
+            # Under prop for DNP player → win (0 < any line)
+            stat_label = prop_market.replace("player_", "").upper()
+            if pred.best_odds and pred.best_odds > 0:
+                pnl = round(pred.best_odds / 100.0, 2)
+            elif pred.best_odds:
+                pnl = round(100.0 / abs(pred.best_odds), 2)
+            else:
+                pnl = 1.0
+            return {
+                "result": "win",
+                "actual_score": f"{player_name} DNP (0 {stat_label})",
+                "pnl": pnl,
+            }
+
+    # Get actual stat
+    actual_stat = espn_provider.get_player_stat(player_data, prop_market)
+    if actual_stat is None:
+        return {"result": "void", "actual_score": None, "pnl": 0.0}
+
+    # Determine result
+    if is_over:
+        if actual_stat > line:
+            result = "win"
+        elif actual_stat < line:
+            result = "loss"
+        else:
+            result = "push"
+    else:
+        if actual_stat < line:
+            result = "win"
+        elif actual_stat > line:
+            result = "loss"
+        else:
+            result = "push"
+
+    # Calculate PnL
+    if result == "win":
+        if pred.best_odds and pred.best_odds > 0:
+            pnl = round(pred.best_odds / 100.0, 2)
+        elif pred.best_odds:
+            pnl = round(100.0 / abs(pred.best_odds), 2)
+        else:
+            pnl = 1.0
+    elif result == "loss":
+        pnl = -1.0
+    else:
+        pnl = 0.0
+
+    stat_label = prop_market.replace("player_", "").upper()
+    actual_score = f"{player_name} {actual_stat:.0f} {stat_label}"
+
+    return {"result": result, "actual_score": actual_score[:50], "pnl": pnl}

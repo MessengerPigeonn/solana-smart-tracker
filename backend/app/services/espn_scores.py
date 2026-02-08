@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import re
 import time
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -27,6 +28,22 @@ ESPN_SPORT_LEAGUE: dict[str, tuple[str, str]] = {
     "MLB": ("baseball", "mlb"),
     "NHL": ("hockey", "nhl"),
     "Soccer": ("soccer", "eng.1"),
+}
+
+ESPN_SUMMARY_URLS: dict[str, str] = {
+    "NBA": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary",
+    "NFL": "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary",
+    "MLB": "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/summary",
+    "NHL": "https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/summary",
+}
+
+# ESPN box score stat label -> index mapping
+# Labels: ['MIN', 'PTS', 'FG', '3PT', 'FT', 'REB', 'AST', 'TO', 'STL', 'BLK', ...]
+PROP_STAT_INDEX: dict[str, int] = {
+    "player_points": 1,
+    "player_rebounds": 5,
+    "player_assists": 6,
+    "player_threes": 3,  # format "X-Y", parse X (made)
 }
 
 CACHE_TTL_SECONDS = 30
@@ -63,6 +80,14 @@ class PlayByPlayEntry:
     team_id: Optional[str]
     wallclock: Optional[str]
     extras: dict = field(default_factory=dict)
+
+
+@dataclass
+class PlayerBoxScore:
+    """A player's stats from an ESPN box score."""
+    name: str
+    stats: list[str]  # raw stat values from ESPN
+    dnp: bool  # True if player was on roster but didn't play
 
 
 @dataclass
@@ -367,6 +392,126 @@ class ESPNScoreProvider:
             wallclock=item.get("wallclock"),
             extras=extras,
         )
+
+    async def get_box_score(
+        self, sport: str, espn_event_id: str
+    ) -> dict[str, PlayerBoxScore]:
+        """Fetch player box scores for a completed game from ESPN summary API.
+
+        Returns a dict mapping normalized player name -> PlayerBoxScore.
+        """
+        summary_url = ESPN_SUMMARY_URLS.get(sport)
+        if not summary_url:
+            return {}
+
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.get(summary_url, params={"event": espn_event_id})
+                resp.raise_for_status()
+                data = resp.json()
+        except Exception as e:
+            logger.warning("ESPN box score fetch failed for %s event %s: %s", sport, espn_event_id, e)
+            return {}
+
+        players: dict[str, PlayerBoxScore] = {}
+        for team_data in data.get("boxscore", {}).get("players", []):
+            for stat_group in team_data.get("statistics", []):
+                for athlete in stat_group.get("athletes", []):
+                    name = athlete.get("athlete", {}).get("displayName", "")
+                    if not name:
+                        continue
+                    stats = athlete.get("stats", [])
+                    key = self._normalize_name(name)
+                    players[key] = PlayerBoxScore(
+                        name=name,
+                        stats=stats,
+                        dnp=not bool(stats),
+                    )
+        return players
+
+    async def find_espn_event_id(
+        self, sport: str, home_team: str, away_team: str, game_date: str
+    ) -> Optional[str]:
+        """Find an ESPN event ID by team names and date (YYYYMMDD format)."""
+        url = ESPN_ENDPOINTS.get(sport)
+        if not url:
+            return None
+
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.get(url, params={"dates": game_date})
+                resp.raise_for_status()
+                data = resp.json()
+        except Exception as e:
+            logger.warning("ESPN event lookup failed for %s on %s: %s", sport, game_date, e)
+            return None
+
+        for event in data.get("events", []):
+            for comp in event.get("competitions", []):
+                competitors = comp.get("competitors", [])
+                if len(competitors) < 2:
+                    continue
+                espn_home = espn_away = ""
+                for c in competitors:
+                    team_name = c.get("team", {}).get("displayName", "")
+                    if c.get("homeAway") == "home":
+                        espn_home = team_name
+                    else:
+                        espn_away = team_name
+                if (self.match_team(espn_home, home_team) and self.match_team(espn_away, away_team)) or \
+                   (self.match_team(espn_home, away_team) and self.match_team(espn_away, home_team)):
+                    status = comp.get("status", {}).get("type", {}).get("name", "")
+                    if status == "STATUS_FINAL":
+                        return event.get("id")
+        return None
+
+    @staticmethod
+    def get_player_stat(player: PlayerBoxScore, prop_market: str) -> Optional[float]:
+        """Extract a stat value for a prop market from a player's box score."""
+        if player.dnp:
+            return 0.0
+        idx = PROP_STAT_INDEX.get(prop_market)
+        if idx is None or idx >= len(player.stats):
+            return None
+        val = player.stats[idx]
+        if prop_market == "player_threes":
+            try:
+                return float(val.split("-")[0])
+            except (ValueError, IndexError):
+                return None
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return None
+
+    @staticmethod
+    def match_player(name1: str, name2: str) -> bool:
+        """Fuzzy player name matching."""
+        def _norm(s: str) -> str:
+            s = "".join(
+                c for c in unicodedata.normalize("NFD", s)
+                if unicodedata.category(c) != "Mn"
+            ).lower().strip()
+            return s.replace(".", "").replace(" jr", "").replace(" sr", "").replace(" iii", "").replace(" ii", "")
+
+        n1, n2 = _norm(name1), _norm(name2)
+        if n1 == n2:
+            return True
+        p1, p2 = n1.split(), n2.split()
+        if len(p1) >= 2 and len(p2) >= 2:
+            if p1[-1] == p2[-1] and p1[0][0] == p2[0][0]:
+                return True
+        if n1 in n2 or n2 in n1:
+            return True
+        return False
+
+    @staticmethod
+    def _normalize_name(name: str) -> str:
+        """Normalize a player name for lookup."""
+        return "".join(
+            c for c in unicodedata.normalize("NFD", name)
+            if unicodedata.category(c) != "Mn"
+        ).lower().strip()
 
     @staticmethod
     def match_team(espn_name: str, our_name: str) -> bool:
