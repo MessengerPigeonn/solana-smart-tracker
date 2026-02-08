@@ -858,7 +858,13 @@ async def generate_predictions(db: AsyncSession) -> list[Prediction]:
 
 
 async def settle_predictions(db: AsyncSession) -> int:
-    """Settle pending predictions by matching against completed game scores."""
+    """Settle pending predictions by matching against completed game scores.
+
+    Uses The Odds API as primary source, ESPN scoreboard as fallback.
+    Voids unsettleable predictions (player props, UFC) after 6 hours.
+    """
+    from app.services.espn_scores import espn_provider
+
     result = await db.execute(
         select(Prediction).where(Prediction.result == "pending")
     )
@@ -877,8 +883,9 @@ async def settle_predictions(db: AsyncSession) -> int:
                 continue
         sport_predictions.setdefault(sport_key, []).append(pred)
 
-    # Fetch scores for each sport
+    # ── Source 1: The Odds API scores (matches by event_id) ────────────
     scores_by_event: dict[str, dict] = {}
+    odds_api_failed = False
     for sport_key in sport_predictions:
         try:
             scores = await odds_provider.get_scores(sport_key, days_from=3)
@@ -887,18 +894,40 @@ async def settle_predictions(db: AsyncSession) -> int:
                     scores_by_event[score_event.get("id", "")] = score_event
         except Exception as e:
             logger.error(f"Failed to fetch scores for {sport_key}: {e}")
+            odds_api_failed = True
             continue
 
+    # ── Source 2: ESPN scores fallback (matches by team name) ──────────
+    espn_final_games: dict[str, list] = {}  # sport_display -> [LiveGameScore]
+    if odds_api_failed or not scores_by_event:
+        # Fetch ESPN scores for sports with pending predictions
+        sports_needed = set(pred.sport for pred in pending)
+        for sport_display in sports_needed:
+            try:
+                games = await espn_provider.get_live_scores(sport_display)
+                final_games = [g for g in games if g.status == "final"]
+                if final_games:
+                    espn_final_games[sport_display] = final_games
+                    logger.info(f"ESPN fallback: {len(final_games)} final games for {sport_display}")
+            except Exception as e:
+                logger.warning(f"ESPN fallback failed for {sport_display}: {e}")
+
     settled_count = 0
+    now = datetime.now(timezone.utc)
 
     for pred in pending:
         # Skip parlays
         if pred.bet_type == "parlay":
             continue
 
-        # Player props: void when game completes (no player stat API for settlement)
+        # ── Try Odds API match first ──────────────────────────────────
+        score_event = scores_by_event.get(pred.event_id)
+
+        # Player props: void when game completes (no player stat API)
         if pred.bet_type == "player_prop":
-            score_event = scores_by_event.get(pred.event_id)
+            game_finished = False
+            actual_score_str = None
+
             if score_event:
                 event_scores = score_event.get("scores", [])
                 if len(event_scores) >= 2:
@@ -906,35 +935,69 @@ async def settle_predictions(db: AsyncSession) -> int:
                     away = score_event.get("away_team", "")
                     hs = next((float(s.get("score", 0)) for s in event_scores if s.get("name") == home), 0)
                     aws = next((float(s.get("score", 0)) for s in event_scores if s.get("name") == away), 0)
-                    pred.result = "void"
-                    pred.actual_score = f"{away} {int(aws)} - {home} {int(hs)}"[:50]
-                    pred.pnl_units = 0.0
-                    pred.settled_at = datetime.now(timezone.utc)
-                    settled_count += 1
+                    actual_score_str = f"{away} {int(aws)} - {home} {int(hs)}"[:50]
+                    game_finished = True
+
+            # ESPN fallback for props
+            if not game_finished:
+                matched = _match_to_espn(pred, espn_final_games.get(pred.sport, []))
+                if matched:
+                    actual_score_str = f"{matched.away_team} {matched.away_score} - {matched.home_team} {matched.home_score}"[:50]
+                    game_finished = True
+
+            # If game started 6+ hours ago, void anyway (game is surely over)
+            if not game_finished and pred.commence_time and (now - pred.commence_time).total_seconds() > 6 * 3600:
+                game_finished = True
+
+            if game_finished:
+                pred.result = "void"
+                pred.actual_score = actual_score_str
+                pred.pnl_units = 0.0
+                pred.settled_at = now
+                settled_count += 1
             continue
 
-        score_event = scores_by_event.get(pred.event_id)
-        if not score_event:
+        # ── Settle main bet types (ML, spread, total) ─────────────────
+        home_team = None
+        away_team = None
+        home_score = 0.0
+        away_score = 0.0
+
+        if score_event:
+            event_scores = score_event.get("scores")
+            if event_scores and len(event_scores) >= 2:
+                home_team = score_event.get("home_team", "")
+                away_team = score_event.get("away_team", "")
+                score_lookup: dict[str, float] = {}
+                for s in event_scores:
+                    team_name = s.get("name", "")
+                    try:
+                        score_val = float(s.get("score", 0))
+                    except (ValueError, TypeError):
+                        score_val = 0
+                    score_lookup[team_name] = score_val
+                home_score = score_lookup.get(home_team, 0)
+                away_score = score_lookup.get(away_team, 0)
+
+        # ESPN fallback for main bets
+        if home_team is None:
+            matched = _match_to_espn(pred, espn_final_games.get(pred.sport, []))
+            if matched:
+                home_team = matched.home_team
+                away_team = matched.away_team
+                home_score = float(matched.home_score)
+                away_score = float(matched.away_score)
+                score_lookup = {home_team: home_score, away_team: away_score}
+
+        # If still no match, void if game started 6+ hours ago (catches UFC etc.)
+        if home_team is None:
+            if pred.commence_time and (now - pred.commence_time).total_seconds() > 6 * 3600:
+                pred.result = "void"
+                pred.pnl_units = 0.0
+                pred.settled_at = now
+                settled_count += 1
             continue
 
-        event_scores = score_event.get("scores")
-        if not event_scores or len(event_scores) < 2:
-            continue
-
-        home_team = score_event.get("home_team", "")
-        away_team = score_event.get("away_team", "")
-
-        score_lookup: dict[str, float] = {}
-        for s in event_scores:
-            team_name = s.get("name", "")
-            try:
-                score_val = float(s.get("score", 0))
-            except (ValueError, TypeError):
-                score_val = 0
-            score_lookup[team_name] = score_val
-
-        home_score = score_lookup.get(home_team, 0)
-        away_score = score_lookup.get(away_team, 0)
         actual_score_str = f"{away_team} {int(away_score)} - {home_team} {int(home_score)}"[:50]
 
         prediction_result = "pending"
@@ -1035,10 +1098,28 @@ async def settle_predictions(db: AsyncSession) -> int:
         pred.result = prediction_result
         pred.actual_score = actual_score_str
         pred.pnl_units = round(pnl, 2)
-        pred.settled_at = datetime.now(timezone.utc)
+        pred.settled_at = now
         settled_count += 1
 
     if settled_count:
         logger.info(f"Settled {settled_count} predictions from {len(pending)} pending")
 
     return settled_count
+
+
+def _match_to_espn(pred, espn_games: list) -> "LiveGameScore | None":
+    """Match a prediction to a finished ESPN game by team name."""
+    from app.services.espn_scores import espn_provider
+
+    for game in espn_games:
+        home_match = (
+            espn_provider.match_team(game.home_team, pred.home_team)
+            or espn_provider.match_team(game.home_team, pred.away_team)
+        )
+        away_match = (
+            espn_provider.match_team(game.away_team, pred.away_team)
+            or espn_provider.match_team(game.away_team, pred.home_team)
+        )
+        if home_match and away_match:
+            return game
+    return None
