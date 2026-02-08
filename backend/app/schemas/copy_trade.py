@@ -1,7 +1,7 @@
 from __future__ import annotations
 from datetime import datetime
 from typing import List, Optional
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 
 # -- Take profit tier --
@@ -27,12 +27,6 @@ class CopyTradeConfigUpdate(BaseModel):
     min_liquidity: Optional[float] = Field(None, ge=0)
     min_market_cap: Optional[float] = Field(None, ge=0)
     skip_print_scan: Optional[bool] = None
-
-    @model_validator(mode="before")
-    @classmethod
-    def coerce_nulls(cls, data: dict) -> dict:
-        """Allow explicit null values for optional numeric fields to clear them."""
-        return data
 
 
 class CopyTradeConfigResponse(BaseModel):

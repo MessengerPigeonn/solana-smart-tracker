@@ -32,6 +32,7 @@ async def get_config(
         config = CopyTradeConfig(user_id=user.id)
         db.add(config)
         await db.flush()
+        await db.refresh(config)
     return CopyTradeConfigResponse.model_validate(config)
 
 
@@ -50,6 +51,7 @@ async def update_config(
     for field, value in updates.model_dump(exclude_unset=True).items():
         setattr(config, field, value)
     await db.flush()
+    await db.refresh(config)
     return CopyTradeConfigResponse.model_validate(config)
 
 
@@ -68,6 +70,7 @@ async def enable_bot(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Generate a trading wallet first")
     config.enabled = True
     await db.flush()
+    await db.refresh(config)
     return CopyTradeConfigResponse.model_validate(config)
 
 
@@ -84,6 +87,7 @@ async def disable_bot(
         await db.flush()
     config.enabled = False
     await db.flush()
+    await db.refresh(config)
     return CopyTradeConfigResponse.model_validate(config)
 
 
