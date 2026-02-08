@@ -232,6 +232,10 @@ def _analyze_moneyline(event: dict, sport: str) -> list[dict]:
             "reasoning": "; ".join(reasons),
         })
 
+    # Only return the single best ML pick per event (not both teams)
+    if len(picks) > 1:
+        picks.sort(key=lambda x: x["confidence"], reverse=True)
+        return picks[:1]
     return picks
 
 
@@ -320,6 +324,10 @@ def _analyze_spread(event: dict, sport: str) -> list[dict]:
             "reasoning": "; ".join(reasons),
         })
 
+    # Only return the single best spread pick per event (not both teams)
+    if len(picks) > 1:
+        picks.sort(key=lambda x: x["confidence"], reverse=True)
+        return picks[:1]
     return picks
 
 
@@ -399,6 +407,10 @@ def _analyze_total(event: dict, sport: str) -> list[dict]:
             "reasoning": "; ".join(reasons),
         })
 
+    # Only return the single best total pick per event (Over or Under, not both)
+    if len(picks) > 1:
+        picks.sort(key=lambda x: x["confidence"], reverse=True)
+        return picks[:1]
     return picks
 
 
@@ -578,9 +590,23 @@ def _analyze_player_props(event_data: dict, sport: str) -> list[dict]:
                 "num_bookmakers": len(entries),
                 "reasoning": "; ".join(reasons),
                 "prop_market": market_key,
+                "_player": player,
+                "_market_key": market_key,
             })
 
-    return picks
+    # Deduplicate: one pick per (player, market) — keep the side with highest confidence
+    best_per_player_market: dict[tuple, dict] = {}
+    for pick in picks:
+        key = (pick["_player"], pick["_market_key"])
+        if key not in best_per_player_market or pick["confidence"] > best_per_player_market[key]["confidence"]:
+            best_per_player_market[key] = pick
+    # Clean up internal keys
+    result = []
+    for pick in best_per_player_market.values():
+        pick.pop("_player", None)
+        pick.pop("_market_key", None)
+        result.append(pick)
+    return result
 
 
 def analyze_event(event: dict, sport: str) -> list[dict]:
