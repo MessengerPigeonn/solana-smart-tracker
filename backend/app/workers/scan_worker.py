@@ -51,6 +51,7 @@ async def run_scan_worker():
                         logger.warning(f"Failed to fetch traders for {token.symbol}: {e}")
 
                 # Upsert wallet stats into SmartWallet DB
+                wallet_updates = 0
                 for token in sorted_tokens[:20]:
                     try:
                         recent = datetime.now(timezone.utc) - timedelta(hours=2)
@@ -67,16 +68,39 @@ async def run_scan_worker():
                                     "estimated_pnl": ts.estimated_pnl,
                                     "token_market_cap": token.market_cap,
                                 })
+                                wallet_updates += 1
                             except Exception:
                                 pass
                     except Exception as e:
                         logger.debug(f"Wallet stats update failed for {token.symbol}: {e}")
 
+                # Helius fallback: if Birdeye produced no trader snapshots,
+                # use Helius recent traders to populate SmartWallet DB
+                if wallet_updates == 0:
+                    for token in sorted_tokens[:10]:
+                        try:
+                            traders = await onchain_analyzer.get_recent_traders(token.address)
+                            for trader in traders:
+                                try:
+                                    await update_wallet_stats(db, trader["wallet"], {
+                                        "estimated_pnl": trader.get("estimated_pnl", 0),
+                                        "token_market_cap": token.market_cap,
+                                    })
+                                    wallet_updates += 1
+                                except Exception:
+                                    pass
+                            await asyncio.sleep(0.3)
+                        except Exception as e:
+                            logger.debug(f"Helius trader fallback failed for {token.symbol}: {e}")
+                    if wallet_updates > 0:
+                        logger.info(f"SmartWallet: populated {wallet_updates} entries via Helius fallback")
+
                 # Flush wallet stats to ensure they persist
-                try:
-                    await db.flush()
-                except Exception:
-                    pass
+                if wallet_updates > 0:
+                    try:
+                        await db.flush()
+                    except Exception:
+                        pass
 
                 # Every other cycle (60s): Run trade analysis on top 30
                 if cycle % 2 == 0:
@@ -160,6 +184,15 @@ async def run_scan_worker():
                         try:
                             early_buyers = await onchain_analyzer.get_early_buyers(token.address, limit=20)
                             if early_buyers:
+                                # Feed early buyers into SmartWallet DB
+                                for buyer in early_buyers:
+                                    try:
+                                        await update_wallet_stats(db, buyer["wallet"], {
+                                            "estimated_pnl": 0,
+                                            "token_market_cap": token.market_cap,
+                                        })
+                                    except Exception:
+                                        pass
                                 # Look up which early buyers are in SmartWallet DB
                                 from app.services.wallet_classifier import get_smart_wallets_for_token
                                 buyer_addrs = [b["wallet"] for b in early_buyers]
