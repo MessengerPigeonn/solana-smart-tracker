@@ -28,6 +28,19 @@ SPORT_WEIGHTS = {
     "soccer_epl": 0.95,
 }
 
+# Sharp book classification — Pinnacle/BetOnline set efficient lines
+SHARP_BOOKS = {"pinnacle", "betonlineag", "williamhill_us"}
+MID_BOOKS = {"betrivers", "unibet_us", "bovada", "betmgm"}
+SOFT_BOOKS = {"draftkings", "fanduel", "pointsbetus", "superbook", "twinspires"}
+
+BOOK_WEIGHTS = {}
+for _b in SHARP_BOOKS:
+    BOOK_WEIGHTS[_b] = 2.0
+for _b in MID_BOOKS:
+    BOOK_WEIGHTS[_b] = 1.0
+for _b in SOFT_BOOKS:
+    BOOK_WEIGHTS[_b] = 0.7
+
 
 # ── Odds helpers ────────────────────────────────────────────────────
 
@@ -61,47 +74,98 @@ def calculate_parlay_odds(legs_odds: list[int | float]) -> int:
     return int(-100 / combined_decimal)
 
 
+# ── Sharp book helpers ──────────────────────────────────────────────
+
+def weighted_consensus_prob(entries: list[tuple]) -> float:
+    """Weighted average implied probability — sharp books get 2x weight.
+
+    entries: list of (price, bookmaker_key) or (price, point, bookmaker_key)
+    Returns weighted average implied probability.
+    """
+    total_weight = 0.0
+    weighted_sum = 0.0
+    for entry in entries:
+        if len(entry) == 2:
+            price, book = entry
+        else:
+            price, _, book = entry[0], entry[1] if len(entry) > 2 else None, entry[-1]
+        w = BOOK_WEIGHTS.get(book, 1.0)
+        weighted_sum += american_to_implied(price) * w
+        total_weight += w
+    return weighted_sum / total_weight if total_weight > 0 else 0.5
+
+
+def sharp_book_agreement(entries: list[tuple], consensus_prob: float) -> int:
+    """Count how many sharp books agree this side has value.
+
+    A sharp book "agrees" if its implied prob is within 2% of consensus
+    (i.e. not pricing it significantly differently).
+    """
+    count = 0
+    for entry in entries:
+        book = entry[-1]
+        if book not in SHARP_BOOKS:
+            continue
+        price = entry[0]
+        book_prob = american_to_implied(price)
+        # Sharp book agrees if its line is within 2% of consensus
+        if abs(book_prob - consensus_prob) <= 0.02:
+            count += 1
+    return count
+
+
 # ── Scoring ─────────────────────────────────────────────────────────
 
 def score_pick(
-    edge: float, num_agreeing: int, best_odds: int | float, sport: str
+    edge: float,
+    sharp_agreement: int,
+    best_odds: int | float,
+    sport: str,
+    num_books: int = 0,
+    consensus_prob: float = 0.5,
 ) -> float:
-    """Score a pick 0-100.
+    """Score a pick 0-100. Data-driven weights from 51-bet analysis.
 
     Weighted factors:
-    - Edge (40%): higher edge = higher score
-    - Consensus (25%): more bookmakers agreeing = more reliable
-    - Odds value (15%): moderate plus odds preferred (best value zone is +100 to +250)
-    - Sport reliability (10%): major sports weighted higher
-    - Line sharpness (10%): more bookmakers = sharper line
+    - Edge (35%): Only factor correlated with winning. 4% = 14pts, 10% = 35pts.
+    - Implied Hit Rate (25%): Favor bets in -150 to +200 range (33-60% implied).
+    - Sharp Agreement (20%): How many sharp books back this side.
+    - Book Consensus (10%): Total books offering similar line.
+    - Sport Reliability (10%): Major sports weighted higher.
     """
-    # Edge component: 0-40 points. 2% edge = 20pts, 5% edge = 40pts
+    # Edge component: 0-35 points. Linear: 4% = 14pts, 10% = 35pts
     edge_pct = edge * 100
-    edge_score = min(edge_pct * 8, 40)
+    edge_score = min(edge_pct * 3.5, 35)
 
-    # Consensus: 0-25 points.
-    consensus_score = min(num_agreeing * 5, 25)
-
-    # Odds value: 0-15 points. Sweet spot is +100 to +250
-    if best_odds > 0:
-        if 100 <= best_odds <= 250:
-            odds_score = 15
-        elif best_odds < 100:
-            odds_score = 10
-        else:
-            odds_score = max(15 - (best_odds - 250) * 0.03, 5)
+    # Implied hit rate: 0-25 points. Sweet spot is 33-60% implied (roughly -150 to +200)
+    # Extreme longshots and extreme chalk both score low
+    if 0.33 <= consensus_prob <= 0.60:
+        hit_rate_score = 25.0
+    elif 0.25 <= consensus_prob < 0.33:
+        hit_rate_score = 18.0  # slight longshot
+    elif 0.60 < consensus_prob <= 0.70:
+        hit_rate_score = 18.0  # moderate favorite
+    elif consensus_prob > 0.70:
+        hit_rate_score = 10.0  # heavy chalk, low payout
     else:
-        # Negative odds: less value, cap at 10
-        odds_score = max(10 + best_odds * 0.02, 3)
+        hit_rate_score = 8.0   # big longshot (<25%)
+
+    # Sharp agreement: 0-20 points. 0 sharps = 0, 1 = 10, 2+ = 20
+    if sharp_agreement >= 2:
+        sharp_score = 20.0
+    elif sharp_agreement == 1:
+        sharp_score = 10.0
+    else:
+        sharp_score = 0.0
+
+    # Book consensus: 0-10 points
+    book_score = min(num_books * 1.5, 10)
 
     # Sport reliability: 0-10 points
     sport_weight = SPORT_WEIGHTS.get(sport, 0.8)
     sport_score = sport_weight * 10
 
-    # Line sharpness: 0-10 points
-    sharpness_score = min(num_agreeing * 1.5, 10)
-
-    total = edge_score + consensus_score + odds_score + sport_score + sharpness_score
+    total = edge_score + hit_rate_score + sharp_score + book_score + sport_score
     return round(min(total, 100), 1)
 
 
@@ -113,9 +177,6 @@ def _analyze_moneyline(event: dict, sport: str) -> list[dict]:
     bookmakers = event.get("bookmakers", [])
     if len(bookmakers) < MIN_BOOKMAKERS:
         return picks
-
-    home_team = event.get("home_team", "")
-    away_team = event.get("away_team", "")
 
     # Collect moneyline outcomes: {team: [(price, bookmaker), ...]}
     ml_data: dict[str, list[tuple]] = {}
@@ -133,8 +194,7 @@ def _analyze_moneyline(event: dict, sport: str) -> list[dict]:
         if len(entries) < MIN_BOOKMAKERS:
             continue
 
-        implied_probs = [american_to_implied(p) for p, _ in entries]
-        consensus_prob = sum(implied_probs) / len(implied_probs)
+        consensus_prob = weighted_consensus_prob(entries)
 
         # Find best odds (highest price = lowest implied prob = most value)
         best_entry = max(entries, key=lambda x: x[0])
@@ -145,13 +205,18 @@ def _analyze_moneyline(event: dict, sport: str) -> list[dict]:
         if edge < MIN_EDGE:
             continue
 
-        num_agreeing = sum(1 for p, _ in entries if american_to_implied(p) < consensus_prob + 0.01)
-        confidence = score_pick(edge, num_agreeing, best_price, sport)
+        sharps = sharp_book_agreement(entries, consensus_prob)
+        num_books = sum(1 for p, _ in entries if abs(american_to_implied(p) - consensus_prob) <= 0.01)
+        confidence = score_pick(edge, sharps, best_price, sport, num_books, consensus_prob)
 
         reasons = []
         reasons.append(f"{team} ML at {best_price:+.0f}")
         reasons.append(f"consensus implied: {consensus_prob*100:.1f}%, best implied: {best_prob*100:.1f}%")
         reasons.append(f"edge: {edge*100:.1f}% across {len(entries)} books")
+        if sharps >= 2:
+            reasons.append(f"{sharps} sharp books agree")
+        elif sharps == 0:
+            reasons.append("no sharp book agreement")
 
         picks.append({
             "bet_type": "moneyline",
@@ -171,7 +236,16 @@ def _analyze_moneyline(event: dict, sport: str) -> list[dict]:
 
 
 def _analyze_spread(event: dict, sport: str) -> list[dict]:
-    """Analyze spreads market for a single event."""
+    """Analyze spreads market for a single event.
+
+    Gated behind config: spreads disabled by default (35% WR, -3.42u in production).
+    If enabled, requires much higher edge threshold and sharp book agreement.
+    """
+    if not settings.prediction_spreads_enabled:
+        return []
+
+    min_edge_spread = settings.prediction_min_edge_spread / 100
+
     picks = []
     bookmakers = event.get("bookmakers", [])
     if len(bookmakers) < MIN_BOOKMAKERS:
@@ -200,8 +274,7 @@ def _analyze_spread(event: dict, sport: str) -> list[dict]:
         if len(near_consensus) < MIN_BOOKMAKERS:
             continue
 
-        implied_probs = [american_to_implied(pr) for _, pr, _ in near_consensus]
-        consensus_prob = sum(implied_probs) / len(implied_probs)
+        consensus_prob = weighted_consensus_prob([(pr, bk) for _, pr, bk in near_consensus])
 
         best_entry = max(entries, key=lambda x: (-x[0] if consensus_point < 0 else x[0], x[1]))
         best_point, best_price, best_book = best_entry
@@ -216,17 +289,22 @@ def _analyze_spread(event: dict, sport: str) -> list[dict]:
         if point_advantage > 0:
             edge += 0.01 * point_advantage
 
-        if edge < MIN_EDGE:
+        if edge < min_edge_spread:
             continue
 
-        num_agreeing = sum(1 for _, pr, _ in near_consensus if american_to_implied(pr) < consensus_prob + 0.01)
-        confidence = score_pick(edge, num_agreeing, best_price, sport)
+        # Require at least 1 sharp book to agree
+        sharps = sharp_book_agreement([(pr, bk) for _, pr, bk in entries], consensus_prob)
+        if sharps < 1:
+            continue
+
+        num_books = sum(1 for _, pr, _ in near_consensus if abs(american_to_implied(pr) - consensus_prob) <= 0.01)
+        confidence = score_pick(edge, sharps, best_price, sport, num_books, consensus_prob)
 
         reasons = []
         reasons.append(f"spread {best_point:+.1f} at {best_price}")
         if point_advantage > 0:
             reasons.append(f"{point_advantage:.1f}pt better than consensus {consensus_point:+.1f}")
-        reasons.append(f"edge: {edge*100:.1f}% across {len(entries)} books")
+        reasons.append(f"edge: {edge*100:.1f}% across {len(entries)} books, {sharps} sharp")
 
         picks.append({
             "bet_type": "spread",
@@ -278,8 +356,7 @@ def _analyze_total(event: dict, sport: str) -> list[dict]:
         if len(near_consensus) < MIN_BOOKMAKERS:
             continue
 
-        implied_probs = [american_to_implied(pr) for _, pr, _ in near_consensus]
-        consensus_prob = sum(implied_probs) / len(implied_probs)
+        consensus_prob = weighted_consensus_prob([(pr, bk) for _, pr, bk in near_consensus])
 
         if side == "Over":
             best_entry = min(entries, key=lambda x: (x[0], -x[1]))
@@ -297,13 +374,16 @@ def _analyze_total(event: dict, sport: str) -> list[dict]:
         if edge < MIN_EDGE:
             continue
 
-        num_agreeing = sum(1 for _, pr, _ in near_consensus if american_to_implied(pr) < consensus_prob + 0.01)
-        confidence = score_pick(edge, num_agreeing, best_price, sport)
+        sharps = sharp_book_agreement([(pr, bk) for _, pr, bk in entries], consensus_prob)
+        num_books = sum(1 for _, pr, _ in near_consensus if abs(american_to_implied(pr) - consensus_prob) <= 0.01)
+        confidence = score_pick(edge, sharps, best_price, sport, num_books, consensus_prob)
 
         reasons = []
         reasons.append(f"{side} {best_point} at {best_price}")
         reasons.append(f"consensus line: {consensus_point}, edge: {edge*100:.1f}%")
         reasons.append(f"{len(entries)} books offering totals")
+        if sharps >= 2:
+            reasons.append(f"{sharps} sharp books agree")
 
         picks.append({
             "bet_type": "total",
@@ -340,8 +420,8 @@ def _analyze_player_props(event_data: dict, sport: str) -> list[dict]:
     """Analyze player prop markets for a single event.
 
     Handles two patterns:
-    A. Over/Under props (pass yds, rush yds, points, etc.)
-    B. Anytime/Yes-No props (anytime TD)
+    A. Over/Under props (pass yds, rush yds, points, etc.) — both Over AND Under
+    B. Anytime/Yes-No props (anytime TD) — both Yes AND No
     """
     picks = []
     bookmakers = event_data.get("bookmakers", [])
@@ -357,7 +437,7 @@ def _analyze_player_props(event_data: dict, sport: str) -> list[dict]:
             market_key = market.get("key", "")
             for outcome in market.get("outcomes", []):
                 # Per-event endpoint: name="Over"/"Under"/"Yes", description="Player Name"
-                side = outcome.get("name", "")        # "Over", "Under", "Yes"
+                side = outcome.get("name", "")        # "Over", "Under", "Yes", "No"
                 player = outcome.get("description", "")  # player name
                 price = outcome.get("price")
                 point = outcome.get("point")  # None for anytime props
@@ -367,9 +447,6 @@ def _analyze_player_props(event_data: dict, sport: str) -> list[dict]:
                         (price, point, bm.get("key", ""))
                     )
 
-    # Group by (player, market) to analyze
-    # For over/under: analyze Over and Under separately
-    # For anytime: only "Yes" matters
     processed = set()
 
     for (player, market_key, desc), entries in prop_data.items():
@@ -381,17 +458,17 @@ def _analyze_player_props(event_data: dict, sport: str) -> list[dict]:
             continue
         processed.add(group_key)
 
-        # Skip "Under" and "No" — we only generate picks for Over/Yes
-        if desc in ("Under", "No"):
+        is_over = desc == "Over"
+        is_under = desc == "Under"
+        is_yes = desc == "Yes"
+        is_no = desc == "No"
+
+        if not (is_over or is_under or is_yes or is_no):
             continue
 
-        is_over_under = desc == "Over"
-        is_anytime = desc == "Yes"
+        market_label = PROP_MARKET_LABELS.get(market_key, market_key.replace("player_", "").replace("_", " ").title())
 
-        if not is_over_under and not is_anytime:
-            continue
-
-        if is_over_under:
+        if is_over or is_under:
             # Over/Under prop: has point values
             points = [pt for _, pt, _ in entries if pt is not None]
             if not points:
@@ -404,11 +481,15 @@ def _analyze_player_props(event_data: dict, sport: str) -> list[dict]:
             if len(near) < 3:
                 continue
 
-            implied_probs = [american_to_implied(pr) for pr, _, _ in near]
-            consensus_prob = sum(implied_probs) / len(implied_probs)
+            consensus_prob = weighted_consensus_prob([(pr, bk) for pr, _, bk in near])
 
-            # Best entry: lowest line with best price for Over
-            best_entry = min(entries, key=lambda x: (x[1] if x[1] is not None else 999, -x[0]))
+            if is_over:
+                # Best Over: lowest line with best price
+                best_entry = min(entries, key=lambda x: (x[1] if x[1] is not None else 999, -x[0]))
+            else:
+                # Best Under: highest line with best price
+                best_entry = max(entries, key=lambda x: (x[1] if x[1] is not None else -999, x[0]))
+
             best_price, best_point, best_book = best_entry
             if best_point is None:
                 continue
@@ -416,26 +497,29 @@ def _analyze_player_props(event_data: dict, sport: str) -> list[dict]:
 
             edge = consensus_prob - best_prob
             # Line advantage bonus
-            line_diff = consensus_line - best_point
+            if is_over:
+                line_diff = consensus_line - best_point
+            else:
+                line_diff = best_point - consensus_line
             if line_diff > 0:
                 edge += 0.01 * line_diff
 
             if edge < MIN_EDGE:
                 continue
 
-            # Format market name nicely
-            market_label = PROP_MARKET_LABELS.get(market_key, market_key.replace("player_", "").replace("_", " ").title())
-            pick_text = f"{player} Over {best_point} {market_label}"
+            pick_text = f"{player} {desc} {best_point} {market_label}"
 
-            num_agreeing = sum(1 for pr, _, _ in near
-                               if american_to_implied(pr) < consensus_prob + 0.01)
-            confidence = score_pick(edge, num_agreeing, best_price, sport)
+            sharps = sharp_book_agreement([(pr, bk) for pr, _, bk in entries], consensus_prob)
+            num_books = sum(1 for pr, _, _ in near if abs(american_to_implied(pr) - consensus_prob) <= 0.01)
+            confidence = score_pick(edge, sharps, best_price, sport, num_books, consensus_prob)
 
             reasons = [
                 f"{pick_text} at {best_price:+.0f}",
                 f"consensus line: {consensus_line}, consensus prob: {consensus_prob*100:.1f}%",
                 f"edge: {edge*100:.1f}% across {len(entries)} books",
             ]
+            if sharps:
+                reasons.append(f"{sharps} sharp books agree")
 
             picks.append({
                 "bet_type": "player_prop",
@@ -452,10 +536,9 @@ def _analyze_player_props(event_data: dict, sport: str) -> list[dict]:
                 "prop_market": market_key,
             })
 
-        elif is_anytime:
-            # Anytime prop (e.g. anytime TD scorer): no point, just Yes price
-            implied_probs = [american_to_implied(pr) for pr, _, _ in entries]
-            consensus_prob = sum(implied_probs) / len(implied_probs)
+        elif is_yes or is_no:
+            # Anytime prop (e.g. anytime TD scorer)
+            consensus_prob = weighted_consensus_prob([(pr, bk) for pr, _, bk in entries])
 
             best_entry = max(entries, key=lambda x: x[0])
             best_price, _, best_book = best_entry
@@ -465,18 +548,22 @@ def _analyze_player_props(event_data: dict, sport: str) -> list[dict]:
             if edge < MIN_EDGE:
                 continue
 
-            market_label = PROP_MARKET_LABELS.get(market_key, market_key.replace("player_", "").replace("_", " ").title())
-            pick_text = f"{player} {market_label}"
+            if is_yes:
+                pick_text = f"{player} {market_label}"
+            else:
+                pick_text = f"{player} No {market_label}"
 
-            num_agreeing = sum(1 for pr, _, _ in entries
-                               if american_to_implied(pr) < consensus_prob + 0.01)
-            confidence = score_pick(edge, num_agreeing, best_price, sport)
+            sharps = sharp_book_agreement([(pr, bk) for pr, _, bk in entries], consensus_prob)
+            num_books = sum(1 for pr, _, _ in entries if abs(american_to_implied(pr) - consensus_prob) <= 0.01)
+            confidence = score_pick(edge, sharps, best_price, sport, num_books, consensus_prob)
 
             reasons = [
                 f"{pick_text} at {best_price:+.0f}",
                 f"consensus prob: {consensus_prob*100:.1f}%, best implied: {best_prob*100:.1f}%",
                 f"edge: {edge*100:.1f}% across {len(entries)} books",
             ]
+            if sharps:
+                reasons.append(f"{sharps} sharp books agree")
 
             picks.append({
                 "bet_type": "player_prop",
@@ -521,7 +608,8 @@ def build_parlay(picks: list[dict], max_legs: int = 3) -> Optional[dict]:
     leg_odds = []
     leg_details = []
     for leg in legs:
-        implied = 1.0 - leg.get("implied_probability", 0.5)
+        # Use consensus prob as the hit rate (more realistic than best-book prob)
+        implied = leg.get("consensus_prob", leg.get("implied_probability", 0.5))
         combined_prob *= implied
         leg_odds.append(leg["best_odds"])
         leg_details.append({

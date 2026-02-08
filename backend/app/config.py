@@ -43,7 +43,9 @@ class Settings(BaseSettings):
     prediction_enabled: bool = False  # kill switch
     prediction_worker_interval: int = 900  # 15 minutes in seconds
     prediction_min_confidence: float = 65.0
-    prediction_min_edge: float = 2.0  # minimum 2% edge
+    prediction_min_edge: float = 4.0  # minimum 4% edge (data: <5% = coin flip)
+    prediction_spreads_enabled: bool = False  # spreads disabled (35% WR, -3.42u)
+    prediction_min_edge_spread: float = 7.0  # higher bar if spreads re-enabled
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 
