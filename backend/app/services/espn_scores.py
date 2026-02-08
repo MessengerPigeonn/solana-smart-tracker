@@ -46,8 +46,8 @@ PROP_STAT_INDEX: dict[str, int] = {
     "player_threes": 3,  # format "X-Y", parse X (made)
 }
 
-CACHE_TTL_SECONDS = 10
-PLAYS_CACHE_TTL_SECONDS = 12
+CACHE_TTL_SECONDS = 8
+PLAYS_CACHE_TTL_SECONDS = 8
 
 
 @dataclass

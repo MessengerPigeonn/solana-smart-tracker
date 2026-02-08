@@ -361,7 +361,7 @@ export function PlayByPlayFeed({ predictionId, sport, isLive }: PlayByPlayFeedPr
     fetchPlays();
 
     if (isLive) {
-      intervalRef.current = setInterval(fetchPlays, 12000);
+      intervalRef.current = setInterval(fetchPlays, 8000);
     }
 
     return () => {
