@@ -1,7 +1,14 @@
 from __future__ import annotations
 from datetime import datetime
 from typing import List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+
+# -- Take profit tier --
+
+class TakeProfitTier(BaseModel):
+    gain_pct: float = Field(..., ge=1, le=100000, description="Sell when price increases by this %")
+    sell_pct: float = Field(..., ge=1, le=100, description="Percentage of remaining position to sell")
 
 
 # -- Config schemas --
@@ -12,6 +19,7 @@ class CopyTradeConfigUpdate(BaseModel):
     max_daily_sol: Optional[float] = Field(None, gt=0, le=100)
     slippage_bps: Optional[int] = Field(None, ge=50, le=5000)
     take_profit_pct: Optional[float] = Field(None, ge=1, le=10000)
+    take_profit_tiers: Optional[List[TakeProfitTier]] = None
     stop_loss_pct: Optional[float] = Field(None, ge=1, le=100)
     cooldown_seconds: Optional[int] = Field(None, ge=0, le=3600)
     min_score: Optional[float] = Field(None, ge=0, le=100)
@@ -19,6 +27,12 @@ class CopyTradeConfigUpdate(BaseModel):
     min_liquidity: Optional[float] = Field(None, ge=0)
     min_market_cap: Optional[float] = Field(None, ge=0)
     skip_print_scan: Optional[bool] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_nulls(cls, data: dict) -> dict:
+        """Allow explicit null values for optional numeric fields to clear them."""
+        return data
 
 
 class CopyTradeConfigResponse(BaseModel):
@@ -30,6 +44,7 @@ class CopyTradeConfigResponse(BaseModel):
     max_daily_sol: float = 5.0
     slippage_bps: int = 500
     take_profit_pct: Optional[float] = None
+    take_profit_tiers: Optional[List[TakeProfitTier]] = None
     stop_loss_pct: Optional[float] = None
     cooldown_seconds: int = 60
     min_score: float = 75.0

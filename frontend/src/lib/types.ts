@@ -60,6 +60,11 @@ export interface TopCallout {
 
 // Copy Trade types
 
+export interface TakeProfitTier {
+  gain_pct: number;
+  sell_pct: number;
+}
+
 export interface CopyTradeConfig {
   id: number;
   user_id: string;
@@ -69,6 +74,7 @@ export interface CopyTradeConfig {
   max_daily_sol: number;
   slippage_bps: number;
   take_profit_pct: number | null;
+  take_profit_tiers: TakeProfitTier[] | null;
   stop_loss_pct: number | null;
   cooldown_seconds: number;
   min_score: number;

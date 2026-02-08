@@ -19,6 +19,7 @@ class CopyTradeConfig(Base):
     max_daily_sol: Mapped[float] = mapped_column(Float, default=5.0, nullable=False)
     slippage_bps: Mapped[int] = mapped_column(Integer, default=500, nullable=False)
     take_profit_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True, default=None)
+    take_profit_tiers: Mapped[Optional[list]] = mapped_column(JSON, nullable=True, default=None)
     stop_loss_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True, default=None)
     cooldown_seconds: Mapped[int] = mapped_column(Integer, default=60, nullable=False)
     min_score: Mapped[float] = mapped_column(Float, default=75.0, nullable=False)

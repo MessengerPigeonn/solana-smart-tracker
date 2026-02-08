@@ -15,7 +15,7 @@ import { apiFetch } from "@/lib/api";
 import { getMe, type User } from "@/lib/auth";
 import { formatAddress, formatCurrency } from "@/lib/utils";
 import type {
-  CopyTradeConfig, CopyTradeRecord, TradingWallet, OpenPosition,
+  CopyTradeConfig, CopyTradeRecord, TradingWallet, OpenPosition, TakeProfitTier,
 } from "@/lib/types";
 
 export default function CopyTradePage() {
@@ -42,6 +42,7 @@ export default function CopyTradePage() {
   const [formMinMarketCap, setFormMinMarketCap] = useState("10000");
   const [formCooldownSeconds, setFormCooldownSeconds] = useState("60");
   const [formTakeProfitPct, setFormTakeProfitPct] = useState("");
+  const [formTakeProfitTiers, setFormTakeProfitTiers] = useState<TakeProfitTier[]>([]);
   const [formStopLossPct, setFormStopLossPct] = useState("");
   const [formMaxRugRisk, setFormMaxRugRisk] = useState("");
   const [formSkipPrintScan, setFormSkipPrintScan] = useState(true);
@@ -65,6 +66,7 @@ export default function CopyTradePage() {
         setFormMinMarketCap(String(c.min_market_cap));
         setFormCooldownSeconds(String(c.cooldown_seconds));
         setFormTakeProfitPct(c.take_profit_pct ? String(c.take_profit_pct) : "");
+        setFormTakeProfitTiers(c.take_profit_tiers ?? []);
         setFormStopLossPct(c.stop_loss_pct ? String(c.stop_loss_pct) : "");
         setFormMaxRugRisk(c.max_rug_risk ? String(c.max_rug_risk) : "");
         setFormSkipPrintScan(c.skip_print_scan);
@@ -105,10 +107,11 @@ export default function CopyTradePage() {
         slippage_bps: parseInt(formSlippageBps), min_score: parseFloat(formMinScore),
         min_liquidity: parseFloat(formMinLiquidity), min_market_cap: parseFloat(formMinMarketCap),
         cooldown_seconds: parseInt(formCooldownSeconds), skip_print_scan: formSkipPrintScan,
+        take_profit_pct: formTakeProfitPct ? parseFloat(formTakeProfitPct) : null,
+        stop_loss_pct: formStopLossPct ? parseFloat(formStopLossPct) : null,
+        max_rug_risk: formMaxRugRisk ? parseFloat(formMaxRugRisk) : null,
+        take_profit_tiers: formTakeProfitTiers.length > 0 ? formTakeProfitTiers : null,
       };
-      if (formTakeProfitPct) body.take_profit_pct = parseFloat(formTakeProfitPct);
-      if (formStopLossPct) body.stop_loss_pct = parseFloat(formStopLossPct);
-      if (formMaxRugRisk) body.max_rug_risk = parseFloat(formMaxRugRisk);
       const updated = await apiFetch<CopyTradeConfig>("/api/copy-trade/config", {
         method: "PUT", body: JSON.stringify(body),
       });
@@ -273,9 +276,69 @@ export default function CopyTradePage() {
               </div>
               <div>
                 <h3 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wider">Auto Exit (Optional)</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div><Label htmlFor="takeProfit">Take Profit (%)</Label><Input id="takeProfit" type="number" step="10" min="1" value={formTakeProfitPct} onChange={(e) => setFormTakeProfitPct(e.target.value)} placeholder="Not set" /></div>
-                  <div><Label htmlFor="stopLoss">Stop Loss (%)</Label><Input id="stopLoss" type="number" step="5" min="1" max="100" value={formStopLossPct} onChange={(e) => setFormStopLossPct(e.target.value)} placeholder="Not set" /></div>
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="stopLoss">Stop Loss (%)</Label>
+                    <Input id="stopLoss" type="number" step="5" min="1" max="100" value={formStopLossPct} onChange={(e) => setFormStopLossPct(e.target.value)} placeholder="Not set" className="max-w-[200px]" />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Trailing Take Profit Tiers</Label>
+                      <Button
+                        type="button" variant="outline" size="sm" className="text-xs h-7"
+                        onClick={() => setFormTakeProfitTiers([...formTakeProfitTiers, { gain_pct: 50, sell_pct: 25 }])}
+                      >
+                        + Add Tier
+                      </Button>
+                    </div>
+                    {formTakeProfitTiers.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">No tiers set. Add tiers to automatically sell portions of your position at different profit levels.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {formTakeProfitTiers.map((tier, i) => (
+                          <div key={i} className="flex items-center gap-2">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-1">
+                                <span className="text-xs text-muted-foreground w-16 shrink-0">Sell</span>
+                                <Input
+                                  type="number" step="5" min="1" max="100"
+                                  value={tier.sell_pct}
+                                  onChange={(e) => {
+                                    const updated = [...formTakeProfitTiers];
+                                    updated[i] = { ...tier, sell_pct: parseFloat(e.target.value) || 0 };
+                                    setFormTakeProfitTiers(updated);
+                                  }}
+                                  className="h-8 w-20 text-xs"
+                                />
+                                <span className="text-xs text-muted-foreground">% at</span>
+                                <Input
+                                  type="number" step="10" min="1"
+                                  value={tier.gain_pct}
+                                  onChange={(e) => {
+                                    const updated = [...formTakeProfitTiers];
+                                    updated[i] = { ...tier, gain_pct: parseFloat(e.target.value) || 0 };
+                                    setFormTakeProfitTiers(updated);
+                                  }}
+                                  className="h-8 w-24 text-xs"
+                                />
+                                <span className="text-xs text-muted-foreground">% gain</span>
+                              </div>
+                            </div>
+                            <Button
+                              type="button" variant="ghost" size="sm"
+                              className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                              onClick={() => setFormTakeProfitTiers(formTakeProfitTiers.filter((_, j) => j !== i))}
+                            >
+                              x
+                            </Button>
+                          </div>
+                        ))}
+                        <p className="text-xs text-muted-foreground">
+                          Example: Sell 10% at 20% gain, sell 50% at 100% gain. Percentages are of remaining position.
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
               <div className="flex items-center gap-3">

@@ -120,7 +120,7 @@ These are the correct deep-link formats. Do NOT change without verifying against
 
 - **Scanner table uses bare `<a href>` tags** instead of the `<TradingLinks>` component for the quick buy column. This is intentional — the table auto-refreshes every 10-15s and React `window.open` callbacks can capture stale closure values. HTML `href` attributes with inline URLs are immune to this. The `<TradingLinks>` component still works correctly in the expanded row and on the callout cards.
 - **PrintScan tab** defaults to mcap_max $500K filter. Auto-refresh is 10s (vs 15s for other tabs).
-- **Alembic migrations**: Follow pattern in `backend/alembic/versions/`. Current head is `007_callout_rework.py`.
+- **Alembic migrations**: Follow pattern in `backend/alembic/versions/`. Current head is `008_add_take_profit_tiers.py`.
 - **Jupiter Price API v2 requires auth now** — don't rely on it for SOL/USD price. DexScreener fallback works reliably from Railway.
 - **Railway outbound network**: Jupiter and CoinGecko can be flaky from Railway. DexScreener and Helius work reliably.
 - **Python version**: Production runs Python 3.12 (Docker). Local venv is Python 3.9 — watch for syntax differences (e.g. `float | None` type unions work in 3.12 but need `Optional` in 3.9).
