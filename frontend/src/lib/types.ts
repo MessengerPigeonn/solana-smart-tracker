@@ -16,6 +16,11 @@ export interface Callout {
   rug_risk_score?: number | null;
   peak_market_cap?: number | null;
   repinned_at?: string | null;
+  score_breakdown?: Record<string, number> | null;
+  security_score?: number | null;
+  social_mentions?: number | null;
+  early_smart_buyers?: number | null;
+  volume_velocity?: number | null;
   dexscreener_url?: string;
   created_at: string;
 }

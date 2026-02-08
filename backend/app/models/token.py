@@ -45,6 +45,12 @@ class ScannedToken(Base):
     scan_source: Mapped[str] = mapped_column(String(20), default="trending")
     rug_risk_score: Mapped[float] = mapped_column(Float, default=0.0)
 
+    # Enhanced callout rework fields
+    social_mention_count: Mapped[int] = mapped_column(Integer, default=0)
+    social_velocity: Mapped[float] = mapped_column(Float, default=0.0)
+    rugcheck_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True, default=None)
+    early_buyer_smart_count: Mapped[int] = mapped_column(Integer, default=0)
+
     last_scanned: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )

@@ -124,6 +124,11 @@ export function CalloutFeed({ initialCallouts, enableSSE, signalFilter }: Callou
             currentMarketCap={currentMarketCaps[c.token_address]}
             peakMarketCap={c.peak_market_cap}
             repinnedAt={c.repinned_at}
+            scoreBreakdown={c.score_breakdown}
+            securityScore={c.security_score}
+            socialMentions={c.social_mentions}
+            earlySmartBuyers={c.early_smart_buyers}
+            volumeVelocity={c.volume_velocity}
           />
         ))
       )}

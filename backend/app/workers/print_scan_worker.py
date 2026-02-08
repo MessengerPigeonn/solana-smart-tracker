@@ -7,6 +7,8 @@ from app.database import async_session
 from app.models.token import ScannedToken
 from app.models.callout import Callout
 from app.services.print_scanner import run_print_scan
+from app.services.rugcheck import rugcheck_client
+from app.services.social_signals import social_signal_service
 logger = logging.getLogger(__name__)
 
 
@@ -28,6 +30,28 @@ async def run_print_scan_worker():
                 # Every cycle (15s): discover and enrich
                 tokens = await run_print_scan(db)
                 logger.info(f"PrintScan: processed {len(tokens)} tokens (cycle {cycle})")
+
+                # Enrich with Rugcheck security scores
+                for token in tokens:
+                    if token.rug_risk_score > 70:
+                        continue  # Skip high-risk tokens to save API calls
+                    try:
+                        report = await rugcheck_client.get_token_report(token.address)
+                        if report:
+                            token.rugcheck_score = report.get("safety_score")
+                        await asyncio.sleep(0.5)
+                    except Exception as e:
+                        logger.debug(f"Rugcheck enrichment failed for {token.symbol}: {e}")
+
+                # Enrich with social signals (only for tokens scoring > 30 in rug risk)
+                for token in tokens[:5]:  # Rate limit: only top 5 per cycle
+                    try:
+                        social = await social_signal_service.get_social_data(token.address)
+                        if social:
+                            token.social_mention_count = social.get("mention_count", 0)
+                        await asyncio.sleep(0.3)
+                    except Exception as e:
+                        logger.debug(f"Social enrichment failed for {token.symbol}: {e}")
 
                 # Callout generation handled solely by callout_worker (avoids race conditions)
 

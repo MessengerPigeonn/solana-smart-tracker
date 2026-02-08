@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { TradingLinks } from "@/components/trading-links";
 import { formatCurrency, formatAddress, formatPercent, formatNumber } from "@/lib/utils";
-import { Copy, Check, ExternalLink, AlertTriangle, Pin } from "lucide-react";
+import { Copy, Check, ExternalLink, AlertTriangle, Pin, Shield, TrendingUp, TrendingDown, Minus, Users } from "lucide-react";
 
 interface CalloutCardProps {
   tokenSymbol: string;
@@ -28,6 +28,11 @@ interface CalloutCardProps {
   currentMarketCap?: number;
   peakMarketCap?: number | null;
   repinnedAt?: string | null;
+  scoreBreakdown?: Record<string, number> | null;
+  securityScore?: number | null;
+  socialMentions?: number | null;
+  earlySmartBuyers?: number | null;
+  volumeVelocity?: number | null;
 }
 
 export function CalloutCard({
@@ -51,6 +56,11 @@ export function CalloutCard({
   currentMarketCap,
   peakMarketCap,
   repinnedAt,
+  scoreBreakdown,
+  securityScore,
+  socialMentions,
+  earlySmartBuyers,
+  volumeVelocity,
 }: CalloutCardProps) {
   const [copied, setCopied] = useState(false);
 
@@ -214,8 +224,60 @@ export function CalloutCard({
           </div>
         )}
 
-        {/* Confidence score bar */}
-        <div className="mb-2">
+        {/* Enhanced signal indicators */}
+        <div className="flex flex-wrap items-center gap-2 mb-2">
+          {/* Volume velocity */}
+          {volumeVelocity != null && volumeVelocity !== 1.0 && (
+            <div className="flex items-center gap-0.5">
+              {volumeVelocity > 1.2 ? (
+                <TrendingUp className="h-3 w-3 text-green-500" />
+              ) : volumeVelocity < 0.8 ? (
+                <TrendingDown className="h-3 w-3 text-red-500" />
+              ) : (
+                <Minus className="h-3 w-3 text-muted-foreground" />
+              )}
+              <span className={`text-[10px] font-medium ${
+                volumeVelocity > 1.2 ? "text-green-500" : volumeVelocity < 0.8 ? "text-red-500" : "text-muted-foreground"
+              }`}>
+                Vol {volumeVelocity > 1 ? "+" : ""}{((volumeVelocity - 1) * 100).toFixed(0)}%
+              </span>
+            </div>
+          )}
+
+          {/* Security badge */}
+          {securityScore != null && (
+            <div className="flex items-center gap-0.5">
+              <Shield className={`h-3 w-3 ${
+                securityScore >= 70 ? "text-green-500" : securityScore >= 40 ? "text-yellow-500" : "text-red-500"
+              }`} />
+              <span className={`text-[10px] font-medium ${
+                securityScore >= 70 ? "text-green-500" : securityScore >= 40 ? "text-yellow-500" : "text-red-500"
+              }`}>
+                {securityScore.toFixed(0)}
+              </span>
+            </div>
+          )}
+
+          {/* Early smart buyers */}
+          {earlySmartBuyers != null && earlySmartBuyers > 0 && (
+            <div className="flex items-center gap-0.5">
+              <Users className="h-3 w-3 text-blue-400" />
+              <span className="text-[10px] text-blue-400 font-medium">
+                {earlySmartBuyers} early
+              </span>
+            </div>
+          )}
+
+          {/* Social mentions */}
+          {socialMentions != null && socialMentions > 0 && (
+            <span className="text-[10px] text-muted-foreground">
+              𝕏 {socialMentions}
+            </span>
+          )}
+        </div>
+
+        {/* Confidence score bar with breakdown tooltip */}
+        <div className="mb-2 group relative">
           <div className="flex items-center justify-between text-xs mb-1">
             <span className="text-muted-foreground">Confidence</span>
             <span className="font-medium">{score}/100</span>
@@ -226,6 +288,26 @@ export function CalloutCard({
               style={{ width: `${scoreWidth}%` }}
             />
           </div>
+          {/* Score breakdown tooltip on hover */}
+          {scoreBreakdown && Object.keys(scoreBreakdown).length > 0 && (
+            <div className="absolute bottom-full left-0 mb-1 hidden group-hover:block z-10">
+              <div className="bg-popover border border-border rounded-md shadow-lg p-2 text-xs min-w-[160px]">
+                {Object.entries(scoreBreakdown)
+                  .filter(([, v]) => v !== 0)
+                  .sort(([, a], [, b]) => b - a)
+                  .map(([key, value]) => (
+                    <div key={key} className="flex justify-between gap-3 py-0.5">
+                      <span className="text-muted-foreground capitalize">
+                        {key.replace(/_/g, " ")}
+                      </span>
+                      <span className={value > 0 ? "text-foreground" : "text-red-500"}>
+                        {value > 0 ? "+" : ""}{value}
+                      </span>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Reason text */}

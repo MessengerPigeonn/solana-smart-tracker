@@ -10,6 +10,7 @@ from app.services.birdeye import birdeye_client
 from app.services.helius import helius_client
 from app.services.jupiter_price import jupiter_price_client
 from app.services.dexscreener import dexscreener_client
+from app.services.rugcheck import rugcheck_client
 
 logger = logging.getLogger(__name__)
 
@@ -408,6 +409,16 @@ class TokenDataProvider:
                 self._mark_birdeye_unhealthy(e)
             else:
                 logger.warning(f"get_token_creation_info failed for {address}: {e}")
+            return None
+
+    # ── rugcheck (free API, no fallback needed) ──────────────────
+
+    async def get_rugcheck_report(self, address: str) -> Optional[dict]:
+        """Rugcheck primary security source — no fallback needed (free API)."""
+        try:
+            return await rugcheck_client.get_token_report(address)
+        except Exception as e:
+            logger.warning(f"Rugcheck report failed for {address}: {e}")
             return None
 
 

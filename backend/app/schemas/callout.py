@@ -22,6 +22,11 @@ class CalloutResponse(BaseModel):
     rug_risk_score: Optional[float] = None
     peak_market_cap: Optional[float] = None
     repinned_at: Optional[datetime] = None
+    score_breakdown: Optional[dict] = None
+    security_score: Optional[float] = None
+    social_mentions: Optional[int] = None
+    early_smart_buyers: Optional[int] = None
+    volume_velocity: Optional[float] = None
     created_at: datetime
 
     @computed_field

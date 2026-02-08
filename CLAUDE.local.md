@@ -91,8 +91,17 @@ These are the correct deep-link formats. Do NOT change without verifying against
 
 ## Callout Engine
 
-- **Thresholds**: BUY >= 75, WATCH >= 55
+- **Thresholds**: BUY >= 65, WATCH >= 45
 - **Quality gate**: mcap > 0, liquidity >= $5K (trending) / $1K (print_scan)
+- **12-factor scoring** (v2, Feb 2026): Replaced 6-factor linear system with weighted multi-factor scoring
+  - **Trending (mcap >= $500K)**: Smart Wallet Signal (20), Volume Velocity (15), Buy Pressure (12), Early Buyer Quality (12), Price Momentum (10), Token Freshness (8), Holder Distribution (8), Liquidity Health (5), Security Score (5), Social Signal (5), Wallet Overlap (+5 bonus), Anti-Rug Gate (-20 penalty)
+  - **Micro-cap (PrintScan)**: Security Safety (25), Early Buyer Quality (15), Holder Distribution (15), Volume Velocity (12), Freshness (10), Buy Pressure (8), Liquidity Floor (5), Social Signal (5), Wallet Overlap (+5 bonus), Anti-Rug Gate (-30 penalty)
+  - Exponential freshness decay: `exp(-age/decay_constant)` instead of step functions
+  - Smart wallet classification weights: sniper 3x, KOL 2x, whale 2x, insider 1.5x, smart_money 1x
+  - Volume velocity = rate of change across last 3 TokenSnapshot cycles
+  - Callouts store `score_breakdown` JSON, `security_score`, `social_mentions`, `early_smart_buyers`, `volume_velocity`
+- **New services**: `rugcheck.py` (Rugcheck.xyz API), `social_signals.py` (DexScreener social heuristics), `wallet_classifier.py` (SmartWallet reputation), `onchain_analyzer.py` (Helius early buyer detection)
+- **New models**: `SmartWallet` (wallet reputation), `TokenSnapshot` (volume velocity time-series)
 - **Dedup**: One buy/watch callout per token EVER. No re-callouts at different market caps. Sell signals dedup at 24h.
 - **Repin feature**: Instead of creating duplicate callouts, tokens gaining traction get their original callout resurfaced to top of feed:
   - Trigger: score rises by >= 10 points (`REPIN_SCORE_DELTA = 10`)
@@ -111,7 +120,7 @@ These are the correct deep-link formats. Do NOT change without verifying against
 
 - **Scanner table uses bare `<a href>` tags** instead of the `<TradingLinks>` component for the quick buy column. This is intentional — the table auto-refreshes every 10-15s and React `window.open` callbacks can capture stale closure values. HTML `href` attributes with inline URLs are immune to this. The `<TradingLinks>` component still works correctly in the expanded row and on the callout cards.
 - **PrintScan tab** defaults to mcap_max $500K filter. Auto-refresh is 10s (vs 15s for other tabs).
-- **Alembic migrations**: Follow pattern in `backend/alembic/versions/`. Current head is `004_add_repinned_at.py`.
+- **Alembic migrations**: Follow pattern in `backend/alembic/versions/`. Current head is `007_callout_rework.py`.
 - **Jupiter Price API v2 requires auth now** — don't rely on it for SOL/USD price. DexScreener fallback works reliably from Railway.
 - **Railway outbound network**: Jupiter and CoinGecko can be flaky from Railway. DexScreener and Helius work reliably.
 - **Python version**: Production runs Python 3.12 (Docker). Local venv is Python 3.9 — watch for syntax differences (e.g. `float | None` type unions work in 3.12 but need `Optional` in 3.9).
@@ -155,15 +164,21 @@ These are the correct deep-link formats. Do NOT change without verifying against
 ### Scoring Rework (Feb 2026)
 - Analysis of 51 settled bets: ML 68.8% WR (+4.88u), totals 58.8% (+2.38u), spreads 35.3% (-3.42u)
 - **Confidence was NOT predictive** (82.8 avg wins vs 81.6 losses) — completely rewrote `score_pick()`
-- **Edge IS predictive**: <5% = coin flip, 5-10% = profitable, 10%+ = perfect
 - **Sharp book weighting**: Pinnacle/BetOnline get 2x weight in consensus, DraftKings/FanDuel get 0.7x
 - `SHARP_BOOKS`, `MID_BOOKS`, `SOFT_BOOKS` sets in prediction_engine.py
 - `weighted_consensus_prob()` and `sharp_book_agreement()` helper functions
-- New `score_pick()` weights: Edge 35%, Implied Hit Rate 25%, Sharp Agreement 20%, Book Consensus 10%, Sport 10%
+- **score_pick() v2 weights** (winner-focused, not arbitrage-based):
+  - Consensus Strength 40% (0-40pts): Tiered — 72%+ = 40, 65%+ = 36, 58%+ = 32, 50%+ = 26, 40%+ = 18, 30%+ = 12, else 6
+  - Edge Quality 20% (0-20pts): Tiered with diminishing returns — 10%+ = 20, 7%+ = 17, 5%+ = 14, 4%+ = 10
+  - Sharp Agreement 20% (0-20pts): Base (2+ sharps = 15, 1 = 8) + interaction bonus (sharp + 60%+ consensus = +5)
+  - Book Breadth 10% (0-10pts): `min(num_books * 1.5, 10)` (unchanged)
+  - Sport Reliability 10% (0-10pts): NBA/NFL 1.0, Soccer 0.95, MLB/NHL 0.9 (unchanged)
+- Key score shifts: 72% consensus favorite 63→89, 40% arb trap 73→51, 25% longshot 64→37
 - Min edge raised from 2% to 4% (`prediction_min_edge` in config.py)
 - Spreads disabled by default (`prediction_spreads_enabled = False`)
 - Under/No picks now generated for props (was previously Over/Yes only)
 - Parlay probability bug fixed (was double-inverting implied prob)
+- Tests: 20 tests in `backend/tests/test_score_pick.py`
 
 ### Prediction Settlement
 - Worker in `app/workers/prediction_worker.py` runs on interval

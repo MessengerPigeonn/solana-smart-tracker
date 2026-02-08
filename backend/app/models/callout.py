@@ -33,6 +33,12 @@ class Callout(Base):
     rug_risk_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True, default=None)
     peak_market_cap: Mapped[Optional[float]] = mapped_column(Float, nullable=True, default=None)
     repinned_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    # Enhanced scoring fields
+    score_breakdown: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True, default=None)
+    security_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True, default=None)
+    social_mentions: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=None)
+    early_smart_buyers: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=None)
+    volume_velocity: Mapped[Optional[float]] = mapped_column(Float, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

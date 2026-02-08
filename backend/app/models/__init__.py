@@ -8,6 +8,8 @@ from app.models.copy_trade_config import CopyTradeConfig
 from app.models.copy_trade import CopyTrade
 from app.models.trading_wallet import TradingWallet
 from app.models.prediction import Prediction
+from app.models.smart_wallet import SmartWallet
+from app.models.token_snapshot import TokenSnapshot
 
 __all__ = [
     "User",
@@ -20,4 +22,6 @@ __all__ = [
     "CopyTrade",
     "TradingWallet",
     "Prediction",
+    "SmartWallet",
+    "TokenSnapshot",
 ]
