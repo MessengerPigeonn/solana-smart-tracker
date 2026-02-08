@@ -14,6 +14,9 @@ from app.services.scanner import (
     analyze_token_trades,
 )
 from app.services.wallet_classifier import update_wallet_stats
+from app.services.rugcheck import rugcheck_client
+from app.services.social_signals import social_signal_service
+from app.services.onchain_analyzer import onchain_analyzer
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -69,6 +72,12 @@ async def run_scan_worker():
                     except Exception as e:
                         logger.debug(f"Wallet stats update failed for {token.symbol}: {e}")
 
+                # Flush wallet stats to ensure they persist
+                try:
+                    await db.flush()
+                except Exception:
+                    pass
+
                 # Every other cycle (60s): Run trade analysis on top 30
                 if cycle % 2 == 0:
                     analyzed_addresses = set()
@@ -114,6 +123,53 @@ async def run_scan_worker():
                         db.add(snapshot)
                     except Exception:
                         pass
+
+                # Every other cycle (60s): Enrich top tokens with Rugcheck + social + early buyers
+                if cycle % 2 == 1:
+                    enrich_tokens = sorted_tokens[:10]
+
+                    # Rugcheck security scores
+                    for token in enrich_tokens:
+                        if token.rugcheck_score is not None:
+                            continue  # Already enriched
+                        try:
+                            report = await rugcheck_client.get_token_report(token.address)
+                            if report:
+                                token.rugcheck_score = report.get("safety_score")
+                            await asyncio.sleep(0.4)
+                        except Exception as e:
+                            logger.debug(f"Rugcheck enrichment failed for {token.symbol}: {e}")
+
+                    # Social signals
+                    for token in enrich_tokens:
+                        if token.social_mention_count > 0:
+                            continue  # Already enriched
+                        try:
+                            social = await social_signal_service.get_social_data(token.address)
+                            if social:
+                                token.social_mention_count = social.get("mention_count", 0)
+                                token.social_velocity = social.get("velocity", 0.0)
+                            await asyncio.sleep(0.3)
+                        except Exception as e:
+                            logger.debug(f"Social enrichment failed for {token.symbol}: {e}")
+
+                    # Early buyer analysis via Helius
+                    for token in enrich_tokens[:5]:  # Top 5 to limit Helius API usage
+                        if token.early_buyer_smart_count > 0:
+                            continue
+                        try:
+                            early_buyers = await onchain_analyzer.get_early_buyers(token.address, limit=20)
+                            if early_buyers:
+                                # Look up which early buyers are in SmartWallet DB
+                                from app.services.wallet_classifier import get_smart_wallets_for_token
+                                buyer_addrs = [b["wallet"] for b in early_buyers]
+                                smart_map = await get_smart_wallets_for_token(db, buyer_addrs)
+                                token.early_buyer_smart_count = len(smart_map)
+                            await asyncio.sleep(0.5)
+                        except Exception as e:
+                            logger.debug(f"Early buyer analysis failed for {token.symbol}: {e}")
+
+                    logger.info(f"Enriched {len(enrich_tokens)} tokens with rugcheck/social/early-buyer data")
 
                 # Every 20 cycles (~10 min): cleanup old snapshots
                 if cycle % 20 == 0 and cycle > 0:

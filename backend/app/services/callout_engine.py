@@ -401,6 +401,8 @@ async def score_token(
             early_smart = await _lookup_smart_wallets(db, early_wallet_addrs)
             early_smart_count = len(early_smart)
             early_buyer_score = 12.0 * min(early_smart_count / 5.0, 1.0)
+            # Persist to token for future scoring passes
+            token.early_buyer_smart_count = early_smart_count
             if early_smart_count > 0:
                 reasons.append(f"{early_smart_count} smart wallets in first 20 buyers")
                 # Add early smart wallets to the smart_wallet_list
