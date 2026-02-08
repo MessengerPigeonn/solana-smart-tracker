@@ -349,15 +349,52 @@ def _compute_bet_status(pred, game) -> str:
     return "unknown"
 
 
+@router.get("/upcoming", response_model=PredictionListResponse)
+async def upcoming_predictions(
+    user: User = Depends(require_tier(Tier.legend)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Predictions for games that haven't started yet.
+
+    Shows pending predictions where commence_time is in the future.
+    """
+    now = datetime.now(timezone.utc)
+
+    query = (
+        select(Prediction)
+        .where(
+            Prediction.result == "pending",
+            Prediction.commence_time > now,
+        )
+        .order_by(Prediction.commence_time.asc())
+    )
+    count_query = (
+        select(func.count())
+        .select_from(Prediction)
+        .where(
+            Prediction.result == "pending",
+            Prediction.commence_time > now,
+        )
+    )
+    total = (await db.execute(count_query)).scalar() or 0
+    rows = await db.execute(query)
+    predictions = rows.scalars().all()
+
+    return PredictionListResponse(
+        predictions=[PredictionResponse.model_validate(p) for p in predictions],
+        total=total,
+    )
+
+
 @router.get("/live", response_model=PredictionListResponse)
 async def live_predictions(
     user: User = Depends(require_tier(Tier.legend)),
     db: AsyncSession = Depends(get_db),
 ):
-    """Predictions for games currently in progress or recently started.
+    """Predictions for games currently in progress.
 
     Shows pending predictions where commence_time has passed (game started)
-    but within the last 12 hours (game likely still in progress or just ended).
+    but within the last 12 hours (game likely still in progress).
     """
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(hours=12)
@@ -380,6 +417,36 @@ async def live_predictions(
             Prediction.commence_time <= now,
             Prediction.commence_time >= cutoff,
         )
+    )
+    total = (await db.execute(count_query)).scalar() or 0
+    rows = await db.execute(query)
+    predictions = rows.scalars().all()
+
+    return PredictionListResponse(
+        predictions=[PredictionResponse.model_validate(p) for p in predictions],
+        total=total,
+    )
+
+
+@router.get("/settled", response_model=PredictionListResponse)
+async def settled_predictions(
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    user: User = Depends(require_tier(Tier.legend)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Predictions that have been settled (win/loss/push/void)."""
+    query = (
+        select(Prediction)
+        .where(Prediction.result.in_(["win", "loss", "push", "void"]))
+        .order_by(Prediction.settled_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    count_query = (
+        select(func.count())
+        .select_from(Prediction)
+        .where(Prediction.result.in_(["win", "loss", "push", "void"]))
     )
     total = (await db.execute(count_query)).scalar() or 0
     rows = await db.execute(query)
