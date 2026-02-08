@@ -546,6 +546,8 @@ def _analyze_player_props(event_data: dict, sport: str) -> list[dict]:
                 "num_bookmakers": len(entries),
                 "reasoning": "; ".join(reasons),
                 "prop_market": market_key,
+                "_player": player,
+                "_market_key": market_key,
             })
 
         elif is_yes or is_no:
