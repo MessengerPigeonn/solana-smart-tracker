@@ -64,10 +64,11 @@ export default function PredictionsPage() {
     load();
   }, []);
 
-  // Auto-refresh every 60s for the active tab
+  // Auto-refresh: 15s for live tab, 60s for others
   useEffect(() => {
     if (user?.tier !== "legend") return;
 
+    const refreshMs = tab === "live" ? 15000 : 60000;
     const interval = setInterval(async () => {
       try {
         const data = await apiFetch<{ predictions: Prediction[]; total: number }>(tabEndpoint(tab));
@@ -76,7 +77,7 @@ export default function PredictionsPage() {
       } catch {
         // ignore
       }
-    }, 60000);
+    }, refreshMs);
     return () => clearInterval(interval);
   }, [user, tab]);
 
@@ -100,7 +101,7 @@ export default function PredictionsPage() {
     };
 
     fetchLiveScores();
-    const interval = setInterval(fetchLiveScores, 30000);
+    const interval = setInterval(fetchLiveScores, 10000);
     return () => {
       cancelled = true;
       clearInterval(interval);

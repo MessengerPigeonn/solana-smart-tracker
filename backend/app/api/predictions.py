@@ -190,6 +190,10 @@ async def live_scores(
     return LiveScoresResponse(scores=scores)
 
 
+# Cache: prediction_id -> (espn_event_id, home_team, away_team)
+_espn_event_cache: dict[int, tuple[str, str, str]] = {}
+
+
 @router.get("/{prediction_id}/plays", response_model=PlayByPlayResponse)
 async def get_plays(
     prediction_id: int,
@@ -204,24 +208,43 @@ async def get_plays(
     if not pred:
         raise HTTPException(status_code=404, detail="Prediction not found")
 
-    # Find matching live game to get event_id
-    live_games = await espn_provider.get_live_scores(pred.sport)
-    matched = _match_prediction_to_game(pred, live_games)
-    if not matched or not matched.event_id:
-        raise HTTPException(status_code=404, detail="No live game found for this prediction")
-
-    if matched.status not in ("in_progress", "halftime", "final"):
-        raise HTTPException(status_code=404, detail="Game has not started yet")
+    # Try cached ESPN event ID first to skip the scoreboard lookup
+    cached = _espn_event_cache.get(prediction_id)
+    matched = None
+    if cached:
+        espn_event_id, cached_home, cached_away = cached
+    else:
+        # Find matching live game to get event_id
+        live_games = await espn_provider.get_live_scores(pred.sport)
+        matched = _match_prediction_to_game(pred, live_games)
+        if not matched or not matched.event_id:
+            raise HTTPException(status_code=404, detail="No live game found for this prediction")
+        if matched.status not in ("in_progress", "halftime", "final"):
+            raise HTTPException(status_code=404, detail="Game has not started yet")
+        espn_event_id = matched.event_id
+        cached_home = matched.home_team
+        cached_away = matched.away_team
+        _espn_event_cache[prediction_id] = (espn_event_id, cached_home, cached_away)
 
     plays, total_plays = await espn_provider.get_play_by_play(
-        event_id=matched.event_id,
+        event_id=espn_event_id,
         sport=pred.sport,
-        home_team=matched.home_team,
-        away_team=matched.away_team,
+        home_team=cached_home,
+        away_team=cached_away,
     )
 
+    # Get live scores for current score display (uses 10s cache, no extra HTTP call)
+    home_score = 0
+    away_score = 0
+    if matched:
+        home_score = matched.home_score
+        away_score = matched.away_score
+    elif plays:
+        home_score = plays[0].home_score
+        away_score = plays[0].away_score
+
     return PlayByPlayResponse(
-        event_id=matched.event_id,
+        event_id=espn_event_id,
         sport=pred.sport,
         total_plays=total_plays,
         plays=[
@@ -244,10 +267,10 @@ async def get_plays(
             )
             for p in plays
         ],
-        home_team=matched.home_team,
-        away_team=matched.away_team,
-        home_score=matched.home_score,
-        away_score=matched.away_score,
+        home_team=cached_home,
+        away_team=cached_away,
+        home_score=home_score,
+        away_score=away_score,
     )
 
 

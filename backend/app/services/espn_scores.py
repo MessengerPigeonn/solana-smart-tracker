@@ -46,8 +46,8 @@ PROP_STAT_INDEX: dict[str, int] = {
     "player_threes": 3,  # format "X-Y", parse X (made)
 }
 
-CACHE_TTL_SECONDS = 30
-PLAYS_CACHE_TTL_SECONDS = 30
+CACHE_TTL_SECONDS = 10
+PLAYS_CACHE_TTL_SECONDS = 12
 
 
 @dataclass
@@ -108,6 +108,7 @@ class ESPNScoreProvider:
     def __init__(self) -> None:
         self._cache: dict[str, _CacheEntry] = {}
         self._plays_cache: dict[str, _PlaysCacheEntry] = {}
+        self._plays_page_count: dict[str, int] = {}  # event_id -> last known page count
 
     async def get_live_scores(self, sport: str) -> list[LiveGameScore]:
         """Return live game scores for a sport, using a 30s in-memory cache."""
@@ -257,24 +258,39 @@ class ESPNScoreProvider:
         )
 
         try:
-            async with httpx.AsyncClient(timeout=15) as client:
+            async with httpx.AsyncClient(timeout=10) as client:
                 # ESPN Core API caps page size at 50 (returns 404 for limit>50)
                 page_size = 50
+                known_page_count = self._plays_page_count.get(event_id)
 
-                # Step 1: Probe to get page count at our page size
-                probe_resp = await client.get(base_url, params={"limit": page_size, "page": 1})
-                probe_resp.raise_for_status()
-                probe_data = probe_resp.json()
-                page_count = probe_data.get("pageCount", 1)
-                total_plays = probe_data.get("count", 0)
-
-                # Step 2: Fetch last page (if only 1 page, reuse probe data)
-                if page_count <= 1:
-                    last_data = probe_data
-                else:
-                    last_resp = await client.get(base_url, params={"limit": page_size, "page": page_count})
+                if known_page_count and known_page_count > 1:
+                    # Fast path: skip probe, fetch last known page directly
+                    last_resp = await client.get(base_url, params={"limit": page_size, "page": known_page_count})
                     last_resp.raise_for_status()
                     last_data = last_resp.json()
+                    total_plays = last_data.get("count", 0)
+                    new_page_count = last_data.get("pageCount", known_page_count)
+                    # If page count grew, fetch the actual last page
+                    if new_page_count > known_page_count:
+                        last_resp = await client.get(base_url, params={"limit": page_size, "page": new_page_count})
+                        last_resp.raise_for_status()
+                        last_data = last_resp.json()
+                    self._plays_page_count[event_id] = new_page_count
+                else:
+                    # First fetch: probe page 1 to learn page count
+                    probe_resp = await client.get(base_url, params={"limit": page_size, "page": 1})
+                    probe_resp.raise_for_status()
+                    probe_data = probe_resp.json()
+                    page_count = probe_data.get("pageCount", 1)
+                    total_plays = probe_data.get("count", 0)
+                    self._plays_page_count[event_id] = page_count
+
+                    if page_count <= 1:
+                        last_data = probe_data
+                    else:
+                        last_resp = await client.get(base_url, params={"limit": page_size, "page": page_count})
+                        last_resp.raise_for_status()
+                        last_data = last_resp.json()
         except Exception as e:
             logger.warning("ESPN plays fetch failed for event %s: %s", event_id, e)
             return cached.plays if cached else [], 0
