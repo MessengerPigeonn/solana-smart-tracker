@@ -1159,8 +1159,7 @@ async def _settle_player_prop(pred, espn_provider, score_event, espn_final_games
         return None
 
     # Extract prop info from pick_detail
-    import json
-    detail = json.loads(pred.pick_detail) if pred.pick_detail else {}
+    detail = pred.pick_detail if pred.pick_detail else {}
     prop_market = detail.get("prop_market", "")
     line = detail.get("line")
     if not prop_market or line is None:
