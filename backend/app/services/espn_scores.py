@@ -38,13 +38,29 @@ ESPN_SUMMARY_URLS: dict[str, str] = {
 }
 
 # ESPN box score stat label -> index mapping
-# Labels: ['MIN', 'PTS', 'FG', '3PT', 'FT', 'REB', 'AST', 'TO', 'STL', 'BLK', ...]
+# NBA Labels: ['MIN', 'PTS', 'FG', '3PT', 'FT', 'REB', 'AST', 'TO', 'STL', 'BLK', ...]
 PROP_STAT_INDEX: dict[str, int] = {
     "player_points": 1,
     "player_rebounds": 5,
     "player_assists": 6,
     "player_threes": 3,  # format "X-Y", parse X (made)
 }
+
+# NFL stats are split across categories — map prop_market -> (category_name, index)
+# Passing:   [C/ATT, YDS, AVG, TD, INT, SACKS, QBR, RTG]
+# Rushing:   [CAR, YDS, AVG, TD, LONG]
+# Receiving: [REC, YDS, AVG, TD, LONG, TGTS]
+NFL_PROP_STAT_MAP: dict[str, tuple[str, int]] = {
+    "player_pass_yds": ("passing", 1),
+    "player_pass_tds": ("passing", 3),
+    "player_rush_yds": ("rushing", 1),
+    "player_rush_tds": ("rushing", 3),
+    "player_reception_yds": ("receiving", 1),
+    "player_receptions": ("receiving", 0),
+}
+
+# Sports that use multi-category box score format
+MULTI_CATEGORY_SPORTS = {"NFL"}
 
 CACHE_TTL_SECONDS = 8
 PLAYS_CACHE_TTL_SECONDS = 8
@@ -86,8 +102,9 @@ class PlayByPlayEntry:
 class PlayerBoxScore:
     """A player's stats from an ESPN box score."""
     name: str
-    stats: list[str]  # raw stat values from ESPN
+    stats: list[str]  # raw stat values from ESPN (NBA flat array)
     dnp: bool  # True if player was on roster but didn't play
+    category_stats: dict = field(default_factory=dict)  # NFL: {category_name: [stats]}
 
 
 @dataclass
@@ -430,19 +447,35 @@ class ESPNScoreProvider:
             return {}
 
         players: dict[str, PlayerBoxScore] = {}
+        is_multi_category = sport in MULTI_CATEGORY_SPORTS
+
         for team_data in data.get("boxscore", {}).get("players", []):
             for stat_group in team_data.get("statistics", []):
+                category_name = stat_group.get("name", "")
                 for athlete in stat_group.get("athletes", []):
                     name = athlete.get("athlete", {}).get("displayName", "")
                     if not name:
                         continue
                     stats = athlete.get("stats", [])
                     key = self._normalize_name(name)
-                    players[key] = PlayerBoxScore(
-                        name=name,
-                        stats=stats,
-                        dnp=not bool(stats),
-                    )
+
+                    if key in players:
+                        # Player already seen in another category — merge
+                        if is_multi_category and category_name:
+                            players[key].category_stats[category_name] = stats
+                        if not players[key].stats and stats:
+                            players[key].stats = stats
+                            players[key].dnp = False
+                    else:
+                        cat_stats = {}
+                        if is_multi_category and category_name:
+                            cat_stats[category_name] = stats
+                        players[key] = PlayerBoxScore(
+                            name=name,
+                            stats=stats,
+                            dnp=not bool(stats),
+                            category_stats=cat_stats,
+                        )
         return players
 
     async def find_espn_event_id(
@@ -486,6 +519,33 @@ class ESPNScoreProvider:
         """Extract a stat value for a prop market from a player's box score."""
         if player.dnp:
             return 0.0
+
+        # Anytime TD: check rushing, receiving, kick/punt return TDs
+        if prop_market == "player_anytime_td":
+            total_tds = 0
+            for cat, td_idx in [("rushing", 3), ("receiving", 3), ("kickReturns", 4), ("puntReturns", 4)]:
+                cat_stats = player.category_stats.get(cat, [])
+                if td_idx < len(cat_stats):
+                    try:
+                        total_tds += int(float(cat_stats[td_idx]))
+                    except (ValueError, TypeError):
+                        pass
+            return float(total_tds)
+
+        # NFL category-based stats (passing, rushing, receiving)
+        nfl_map = NFL_PROP_STAT_MAP.get(prop_market)
+        if nfl_map and player.category_stats:
+            category, idx = nfl_map
+            cat_stats = player.category_stats.get(category, [])
+            if idx < len(cat_stats):
+                try:
+                    return float(cat_stats[idx])
+                except (ValueError, TypeError):
+                    return None
+            # Player exists but has no stats in this category (e.g. QB with 0 rush yards)
+            return 0.0 if player.category_stats else None
+
+        # NBA flat-array stats
         idx = PROP_STAT_INDEX.get(prop_market)
         if idx is None or idx >= len(player.stats):
             return None

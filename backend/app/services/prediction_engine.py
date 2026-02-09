@@ -1167,19 +1167,36 @@ async def _settle_player_prop(pred, espn_provider, score_event, espn_final_games
     detail = pred.pick_detail if pred.pick_detail else {}
     prop_market = detail.get("prop_market", "")
     line = detail.get("line")
-    if not prop_market or line is None:
+    is_anytime = prop_market == "player_anytime_td"
+    if not prop_market or (line is None and not is_anytime):
         # Can't settle without market/line — void it
         return {"result": "void", "actual_score": None, "pnl": 0.0}
+    # Anytime TD has implicit line of 0.5 (scored at least 1)
+    if is_anytime and line is None:
+        line = 0.5
 
     # Parse player name and direction from pick text
     pick = pred.pick
     player_name = None
     is_over = None
-    for sep in (" Over ", " Under "):
-        if sep in pick:
-            player_name = pick.split(sep)[0].strip()
-            is_over = sep.strip() == "Over"
-            break
+    is_anytime = prop_market == "player_anytime_td"
+
+    if is_anytime:
+        # Format: "Player Name Anytime TD" or "Player Name No Anytime TD"
+        from app.services.prediction_engine import PROP_MARKET_LABELS
+        label = PROP_MARKET_LABELS.get(prop_market, "")
+        if f" No {label}" in pick:
+            player_name = pick.split(f" No {label}")[0].strip()
+            is_over = False  # "No" = under
+        elif f" {label}" in pick:
+            player_name = pick.split(f" {label}")[0].strip()
+            is_over = True  # "Yes" = over
+    else:
+        for sep in (" Over ", " Under "):
+            if sep in pick:
+                player_name = pick.split(sep)[0].strip()
+                is_over = sep.strip() == "Over"
+                break
 
     if not player_name:
         return {"result": "void", "actual_score": None, "pnl": 0.0}
