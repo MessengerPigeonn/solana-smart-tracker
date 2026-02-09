@@ -948,6 +948,7 @@ async def settle_predictions(db: AsyncSession) -> int:
     now = datetime.now(timezone.utc)
 
     for pred in pending:
+      try:
         # Skip parlays
         if pred.bet_type == "parlay":
             continue
@@ -1115,6 +1116,10 @@ async def settle_predictions(db: AsyncSession) -> int:
         pred.pnl_units = round(pnl, 2)
         pred.settled_at = now
         settled_count += 1
+
+      except Exception as e:
+        logger.error(f"Failed to settle prediction {pred.id} ({pred.sport}/{pred.bet_type}): {e}", exc_info=True)
+        continue
 
     if settled_count:
         logger.info(f"Settled {settled_count} predictions from {len(pending)} pending")

@@ -43,6 +43,6 @@ async def run_prediction_worker():
             logger.info("Prediction worker cancelled")
             break
         except Exception as e:
-            logger.error(f"Prediction worker error: {e}")
+            logger.error(f"Prediction worker error: {e}", exc_info=True)
 
         await asyncio.sleep(settings.prediction_worker_interval)
