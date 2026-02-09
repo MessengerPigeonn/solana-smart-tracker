@@ -697,7 +697,7 @@ async def settled_predictions(
     query = (
         select(Prediction)
         .where(Prediction.result.in_(["win", "loss", "push", "void"]))
-        .order_by(Prediction.settled_at.desc())
+        .order_by(Prediction.commence_time.desc())
         .offset(offset)
         .limit(limit)
     )
