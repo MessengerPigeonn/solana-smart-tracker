@@ -132,6 +132,10 @@ export function CalloutFeed({ initialCallouts, enableSSE, signalFilter }: Callou
             bundlePct={c.bundle_pct}
             bundleHeldPct={c.bundle_held_pct}
             bundleRisk={c.bundle_risk}
+            convictionScore={c.conviction_score}
+            deployerRugCount={c.deployer_rug_count}
+            ctoWalletCount={c.cto_wallet_count}
+            isCtoRevival={c.is_cto_revival}
           />
         ))
       )}

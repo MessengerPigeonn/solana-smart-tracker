@@ -83,6 +83,16 @@ async def _update_peak_market_caps(db):
             callout.peak_market_cap = current_mcap
             updated += 1
 
+        # Flag faded tokens: current mcap < 20% of peak and peak >= 5x callout mcap
+        if (
+            callout.peak_market_cap
+            and callout.peak_market_cap >= callout.market_cap * 5
+            and token
+            and token.market_cap > 0
+            and token.market_cap / callout.peak_market_cap < 0.20
+        ):
+            token.is_faded = True
+
     if updated or corrected:
         logger.info(
             f"Peak market caps: {updated} updated, {corrected} corrected (reset bad data)"

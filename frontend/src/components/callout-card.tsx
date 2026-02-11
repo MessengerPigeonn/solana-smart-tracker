@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { TradingLinks } from "@/components/trading-links";
 import { formatCurrency, formatAddress, formatPercent, formatNumber } from "@/lib/utils";
-import { Copy, Check, ExternalLink, AlertTriangle, Pin, Shield, TrendingUp, TrendingDown, Minus, Users } from "lucide-react";
+import { Copy, Check, ExternalLink, AlertTriangle, Pin, Shield, TrendingUp, TrendingDown, Minus, Users, RefreshCw } from "lucide-react";
 
 interface CalloutCardProps {
   tokenSymbol: string;
@@ -38,6 +38,8 @@ interface CalloutCardProps {
   bundleRisk?: string | null;
   convictionScore?: number | null;
   deployerRugCount?: number | null;
+  ctoWalletCount?: number | null;
+  isCtoRevival?: boolean | null;
 }
 
 export function CalloutCard({
@@ -71,6 +73,8 @@ export function CalloutCard({
   bundleRisk,
   convictionScore,
   deployerRugCount,
+  ctoWalletCount,
+  isCtoRevival,
 }: CalloutCardProps) {
   const [copied, setCopied] = useState(false);
 
@@ -139,10 +143,16 @@ export function CalloutCard({
                 PRINT
               </Badge>
             )}
-            {repinnedAt && (
+            {repinnedAt && !isCtoRevival && (
               <Badge className="text-[10px] px-1 py-0 bg-blue-500/10 text-blue-400 border-blue-500/20 gap-0.5">
                 <Pin className="h-2.5 w-2.5" />
                 GAINING
+              </Badge>
+            )}
+            {isCtoRevival && (
+              <Badge className="text-[10px] px-1 py-0 bg-cyan-500/10 text-cyan-400 border-cyan-500/20 gap-0.5">
+                <RefreshCw className="h-2.5 w-2.5" />
+                CTO
               </Badge>
             )}
           </div>
@@ -324,6 +334,26 @@ export function CalloutCard({
               <AlertTriangle className="h-3 w-3" />
               <span className="text-[10px] font-medium">
                 Serial Rugger ({deployerRugCount} rugs)
+              </span>
+            </div>
+          )}
+
+          {/* CTO wallet indicator */}
+          {ctoWalletCount != null && ctoWalletCount > 0 && (
+            <div className="flex items-center gap-0.5 text-cyan-400">
+              <Users className="h-3 w-3" />
+              <span className="text-[10px] font-medium">
+                {ctoWalletCount} CTO wallet{ctoWalletCount !== 1 ? "s" : ""}
+              </span>
+            </div>
+          )}
+
+          {/* Social CTO indicator */}
+          {isCtoRevival && (
+            <div className="flex items-center gap-0.5 text-cyan-400">
+              <RefreshCw className="h-3 w-3" />
+              <span className="text-[10px] font-medium">
+                CTO buzz on X
               </span>
             </div>
           )}

@@ -32,6 +32,8 @@ class CalloutResponse(BaseModel):
     bundle_risk: Optional[str] = None
     deployer_rug_count: Optional[int] = None
     conviction_score: Optional[float] = None
+    cto_wallet_count: Optional[int] = None
+    is_cto_revival: Optional[bool] = None
     created_at: datetime
 
     @computed_field

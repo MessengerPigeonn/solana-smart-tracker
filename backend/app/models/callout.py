@@ -2,7 +2,7 @@ from __future__ import annotations
 import enum
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import String, Float, Integer, Text, DateTime, JSON, Enum as SAEnum, func
+from sqlalchemy import String, Float, Integer, Boolean, Text, DateTime, JSON, Enum as SAEnum, func
 from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
 
@@ -46,6 +46,9 @@ class Callout(Base):
     # Deep intelligence fields
     deployer_rug_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=None)
     conviction_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True, default=None)
+    # CTO tracking fields
+    cto_wallet_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=None)
+    is_cto_revival: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

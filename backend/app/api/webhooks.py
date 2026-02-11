@@ -13,6 +13,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Request
 
 from app.services.hot_tokens import add_hot_token
+from app.services.cto_tracker import cto_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +139,10 @@ async def helius_webhook(request: Request):
         token = parsed["token_address"]
         wallet = parsed["wallet"]
         buy_count += 1
+
+        # CTO wallet buy detection
+        if wallet in cto_tracker.get_cto_wallet_set():
+            add_hot_token(token, reason="cto_wallet_buy", wallet=wallet)
 
         # Track convergence
         convergence_count = _track_convergence(token, wallet)

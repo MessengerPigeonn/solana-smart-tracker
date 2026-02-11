@@ -26,6 +26,8 @@ export interface Callout {
   bundle_risk?: string | null;
   deployer_rug_count?: number | null;
   conviction_score?: number | null;
+  cto_wallet_count?: number | null;
+  is_cto_revival?: boolean | null;
   dexscreener_url?: string;
   created_at: string;
 }

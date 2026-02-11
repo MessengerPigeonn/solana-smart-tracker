@@ -11,6 +11,7 @@ class Settings(BaseSettings):
 
     birdeye_api_key: str = ""
     helius_api_key: str = ""
+    socialdata_api_key: str = ""
 
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""

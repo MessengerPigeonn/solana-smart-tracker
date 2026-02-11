@@ -1,6 +1,7 @@
 from __future__ import annotations
 import asyncio
 import logging
+import time
 import httpx
 from typing import Optional
 from app.config import get_settings
@@ -10,12 +11,15 @@ logger = logging.getLogger(__name__)
 
 HELIUS_RPC = f"https://mainnet.helius-rpc.com/?api-key={settings.helius_api_key}"
 HELIUS_API = "https://api.helius.xyz/v0"
+HELIUS_WALLET_API = "https://api.helius.xyz/v1"
 
 
 class HeliusClient:
     def __init__(self):
         self.api_key = settings.helius_api_key
         self._semaphore = asyncio.Semaphore(settings.helius_rate_limit)
+        self._identity_cache: dict[str, tuple[float, Optional[dict]]] = {}
+        self._funded_by_cache: dict[str, tuple[float, Optional[dict]]] = {}
 
     # ── low-level helpers ──────────────────────────────────────────
 
@@ -322,6 +326,103 @@ class HeliusClient:
             "market_cap": 0,
             "price_change_24h_percent": 0,
         }]
+
+
+    # ── Wallet Identity API (v1) ─────────────────────────────────────
+
+    async def get_wallet_identity(self, address: str) -> Optional[dict]:
+        """GET /v1/wallet/{address}/identity -- returns identity info or None."""
+        cache_entry = self._identity_cache.get(address)
+        if cache_entry:
+            ts, result = cache_entry
+            if time.monotonic() - ts < 86400:  # 24h
+                return result
+
+        try:
+            async with self._semaphore:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    resp = await client.get(
+                        f"{HELIUS_WALLET_API}/wallet/{address}/identity",
+                        params={"api-key": self.api_key},
+                    )
+                    if resp.status_code == 404:
+                        self._identity_cache[address] = (time.monotonic(), None)
+                        return None
+                    resp.raise_for_status()
+                    data = resp.json()
+                    self._identity_cache[address] = (time.monotonic(), data)
+                    return data
+        except httpx.HTTPStatusError:
+            return None
+        except Exception as e:
+            logger.debug(f"Helius wallet identity failed for {address}: {e}")
+            return None
+
+    async def batch_wallet_identity(self, addresses: list[str]) -> dict[str, dict]:
+        """POST /v1/wallet/batch-identity -- up to 100 addresses."""
+        results = {}
+        uncached = []
+
+        for addr in addresses:
+            cache_entry = self._identity_cache.get(addr)
+            if cache_entry:
+                ts, result = cache_entry
+                if time.monotonic() - ts < 86400 and result is not None:
+                    results[addr] = result
+                    continue
+            uncached.append(addr)
+
+        if not uncached:
+            return results
+
+        try:
+            async with self._semaphore:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    resp = await client.post(
+                        f"{HELIUS_WALLET_API}/wallet/batch-identity",
+                        params={"api-key": self.api_key},
+                        json={"addresses": uncached[:100]},
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+                    now = time.monotonic()
+                    for item in data if isinstance(data, list) else []:
+                        addr = item.get("address") or item.get("wallet", "")
+                        if addr:
+                            self._identity_cache[addr] = (now, item)
+                            results[addr] = item
+        except Exception as e:
+            logger.debug(f"Helius batch wallet identity failed: {e}")
+
+        return results
+
+    async def get_funded_by(self, address: str) -> Optional[dict]:
+        """GET /v1/wallet/{address}/funded-by -- traces first SOL funder."""
+        cache_entry = self._funded_by_cache.get(address)
+        if cache_entry:
+            ts, result = cache_entry
+            if time.monotonic() - ts < 3600:  # 1h TTL
+                return result
+
+        try:
+            async with self._semaphore:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    resp = await client.get(
+                        f"{HELIUS_WALLET_API}/wallet/{address}/funded-by",
+                        params={"api-key": self.api_key},
+                    )
+                    if resp.status_code == 404:
+                        self._funded_by_cache[address] = (time.monotonic(), None)
+                        return None
+                    resp.raise_for_status()
+                    data = resp.json()
+                    self._funded_by_cache[address] = (time.monotonic(), data)
+                    return data
+        except httpx.HTTPStatusError:
+            return None
+        except Exception as e:
+            logger.debug(f"Helius funded-by failed for {address}: {e}")
+            return None
 
 
 helius_client = HeliusClient()

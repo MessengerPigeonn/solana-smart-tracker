@@ -64,6 +64,11 @@ class ScannedToken(Base):
     early_buyer_hold_rate: Mapped[Optional[float]] = mapped_column(Float, nullable=True, default=None)
     conviction_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True, default=None)
 
+    # CTO tracking fields
+    cto_wallet_count: Mapped[int] = mapped_column(Integer, default=0)
+    is_faded: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=None)
+    social_cto_mentions: Mapped[int] = mapped_column(Integer, default=0)
+
     last_scanned: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )

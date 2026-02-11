@@ -16,6 +16,7 @@ from sqlalchemy import select
 from app.config import get_settings
 from app.database import async_session
 from app.models.smart_wallet import SmartWallet
+from app.models.cto_wallet import CTOWallet
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -29,8 +30,14 @@ REFRESH_INTERVAL_SECONDS = 600  # 10 minutes
 _webhook_id: Optional[str] = None
 
 
+CTO_MIN_REPUTATION = 30.0
+
+
 async def _get_high_rep_wallets() -> list[str]:
-    """Fetch wallet addresses with reputation_score > MIN_REPUTATION_SCORE."""
+    """Fetch wallet addresses with reputation_score > MIN_REPUTATION_SCORE.
+
+    Also includes CTO wallets with reputation > CTO_MIN_REPUTATION.
+    """
     async with async_session() as session:
         result = await session.execute(
             select(SmartWallet.wallet_address).where(
@@ -38,7 +45,24 @@ async def _get_high_rep_wallets() -> list[str]:
             )
         )
         addresses = [row[0] for row in result.all()]
-    logger.info("helius_webhooks: found %d wallets with rep > %.0f", len(addresses), MIN_REPUTATION_SCORE)
+
+        # Include CTO wallets with rep > 30
+        cto_result = await session.execute(
+            select(CTOWallet.wallet_address).where(
+                CTOWallet.reputation_score > CTO_MIN_REPUTATION
+            )
+        )
+        cto_addresses = [row[0] for row in cto_result.all()]
+        # Merge without duplicates
+        existing = set(addresses)
+        for addr in cto_addresses:
+            if addr not in existing:
+                addresses.append(addr)
+
+    logger.info(
+        "helius_webhooks: found %d wallets (smart: %d, CTO: %d) with sufficient rep",
+        len(addresses), len(addresses) - len(cto_addresses), len(cto_addresses),
+    )
     return addresses
 
 

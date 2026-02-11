@@ -25,6 +25,7 @@ from app.services.early_buyer_tracker import early_buyer_tracker
 from app.services.cross_token_intel import cross_token_intel
 from app.services.hot_tokens import get_and_clear_hot_tokens, add_hot_token
 from app.services.data_provider import data_provider
+from app.services.cto_tracker import cto_tracker
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -355,7 +356,35 @@ async def run_scan_worker():
                         except Exception as e:
                             logger.debug(f"Early buyer tracking failed for {token.symbol}: {e}")
 
-                    logger.info(f"Enriched {len(enrich_tokens)} tokens with rugcheck/social/early-buyer/bundle/deployer/conviction data")
+                    # CTO accumulation check
+                    for token in enrich_tokens[:10]:
+                        try:
+                            cto_result = await cto_tracker.check_cto_accumulation(db, token.address)
+                            token.cto_wallet_count = cto_result.get("cto_count", 0)
+                            if cto_result.get("is_cto_signal"):
+                                add_hot_token(token.address, reason="cto_accumulation")
+                        except Exception as e:
+                            logger.debug(f"CTO accumulation check failed for {token.symbol}: {e}")
+
+                    logger.info(f"Enriched {len(enrich_tokens)} tokens with rugcheck/social/early-buyer/bundle/deployer/conviction/cto data")
+
+                # Every 20 cycles (~10 min): scan CTO wallet activity + social signals
+                if cycle % 20 == 0 and cycle > 0:
+                    try:
+                        await cto_tracker.scan_cto_wallet_activity(db)
+                    except Exception as e:
+                        logger.warning(f"CTO wallet activity scan failed: {e}")
+                    try:
+                        await cto_tracker.scan_social_cto_signals(db)
+                    except Exception as e:
+                        logger.warning(f"Social CTO signal scan failed: {e}")
+
+                # Every 120 cycles (~60 min): discover new CTO wallets
+                if cycle % 120 == 0 and cycle > 0:
+                    try:
+                        await cto_tracker.discover_cto_wallets(db)
+                    except Exception as e:
+                        logger.warning(f"CTO wallet discovery failed: {e}")
 
                 # Every 120 cycles (~60 min): discover new smart wallets from successful callouts
                 if cycle % 120 == 0 and cycle > 0:

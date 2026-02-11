@@ -30,6 +30,7 @@ WALLET_TYPE_WEIGHTS = {
     "sniper": 3.0,
     "kol": 2.0,
     "whale": 2.0,
+    "cto": 1.5,
     "insider": 1.5,
     "smart_money": 1.0,
     "promising": 0.5,
@@ -324,10 +325,28 @@ async def _score_micro_token(db: AsyncSession, token: ScannedToken) -> tuple[flo
             reasons.append("early buyers dumping")
     breakdown["conviction"] = round(conviction_bonus, 1)
 
+    # --- 13. CTO Revival Bonus (+10 for CTO wallet accumulation + social) ---
+    cto_bonus = 0.0
+    cto_count = getattr(token, "cto_wallet_count", 0) or 0
+    social_cto = getattr(token, "social_cto_mentions", 0) or 0
+    if cto_count >= 3:
+        cto_bonus += 10.0
+        reasons.append(f"{cto_count} CTO wallets accumulating")
+    elif cto_count == 2:
+        cto_bonus += 7.0
+        reasons.append(f"{cto_count} CTO wallets accumulating")
+    elif cto_count == 1:
+        cto_bonus += 3.0
+        reasons.append("CTO wallet detected")
+    if social_cto >= 3:
+        cto_bonus += 4.0
+        reasons.append(f"CTO buzz on X ({social_cto} mentions)")
+    breakdown["cto_revival"] = round(cto_bonus, 1)
+
     total_score = (
         security_score + early_buyer_score + holder_score + vol_vel_score
         + freshness_score + buy_sell_score + liquidity_score + social_score
-        + overlap_bonus + hot_bonus + conviction_bonus + penalty
+        + overlap_bonus + hot_bonus + conviction_bonus + cto_bonus + penalty
     )
     total_score = round(max(min(total_score, 100), 0), 1)
 
@@ -632,12 +651,30 @@ async def score_token(
             reasons.append("early buyers dumping")
     breakdown["conviction"] = round(conviction_bonus, 1)
 
+    # --- 15. CTO Revival Bonus (+8 for CTO wallet accumulation + social) ---
+    cto_bonus = 0.0
+    cto_count = getattr(token, "cto_wallet_count", 0) or 0
+    social_cto = getattr(token, "social_cto_mentions", 0) or 0
+    if cto_count >= 3:
+        cto_bonus += 8.0
+        reasons.append(f"{cto_count} CTO wallets accumulating")
+    elif cto_count == 2:
+        cto_bonus += 5.0
+        reasons.append(f"{cto_count} CTO wallets accumulating")
+    elif cto_count == 1:
+        cto_bonus += 2.0
+        reasons.append("CTO wallet detected")
+    if social_cto >= 3:
+        cto_bonus += 3.0
+        reasons.append(f"CTO buzz on X ({social_cto} mentions)")
+    breakdown["cto_revival"] = round(cto_bonus, 1)
+
     # ── Total ────────────────────────────────────────────────────────
     total_score = (
         smart_wallet_score + vol_vel_score + buy_sell_score + early_buyer_score
         + momentum_score + freshness_score + holder_score + liquidity_score
         + sec_score + social_score + overlap_bonus + hot_bonus
-        + conviction_bonus + penalty
+        + conviction_bonus + cto_bonus + penalty
     )
     total_score = round(max(min(total_score, 100), 0), 1)
 
@@ -768,6 +805,11 @@ async def generate_callouts(db: AsyncSession) -> list[Callout]:
         )
         existing_callout = existing_result.scalars().first()
 
+        # CTO revival: bypass 72h dedup for tokens with CTO wallet + social signals
+        cto_count = getattr(token, "cto_wallet_count", 0) or 0
+        social_cto = getattr(token, "social_cto_mentions", 0) or 0
+        is_cto_revival = cto_count >= 2 or social_cto >= 3
+
         if existing_callout:
             # Repin if score gained significantly and cooldown passed
             repin_cutoff = datetime.now(timezone.utc) - timedelta(hours=REPIN_COOLDOWN_HOURS)
@@ -786,6 +828,8 @@ async def generate_callouts(db: AsyncSession) -> list[Callout]:
                 existing_callout.repinned_at = datetime.now(timezone.utc)
                 existing_callout.score_breakdown = breakdown
                 existing_callout.volume_velocity = velocity
+                existing_callout.cto_wallet_count = cto_count if cto_count > 0 else None
+                existing_callout.is_cto_revival = is_cto_revival or None
                 if score >= BUY_THRESHOLD and existing_callout.signal == Signal.watch:
                     existing_callout.signal = Signal.buy
                 if smart_wallets:
@@ -793,6 +837,32 @@ async def generate_callouts(db: AsyncSession) -> list[Callout]:
                 new_callouts.append(existing_callout)
                 logger.info(f"Repinned {token.symbol} (score {existing_callout.score} -> {score})")
             continue
+
+        # CTO revival path: look for ANY prior callout (no dedup cutoff)
+        if is_cto_revival and not existing_callout:
+            old_result = await db.execute(
+                select(Callout).where(
+                    Callout.token_address == token.address,
+                    Callout.signal.in_([Signal.buy, Signal.watch]),
+                ).order_by(Callout.created_at.desc()).limit(1)
+            )
+            old_callout = old_result.scalars().first()
+            if old_callout:
+                # Repin the old callout as CTO revival
+                old_callout.score = score
+                old_callout.reason = reason
+                old_callout.repinned_at = datetime.now(timezone.utc)
+                old_callout.score_breakdown = breakdown
+                old_callout.volume_velocity = velocity
+                old_callout.cto_wallet_count = cto_count
+                old_callout.is_cto_revival = True
+                if score >= BUY_THRESHOLD:
+                    old_callout.signal = Signal.buy
+                if smart_wallets:
+                    old_callout.smart_wallets = smart_wallets
+                new_callouts.append(old_callout)
+                logger.info(f"CTO Revival repin for {token.symbol} (score {score}, {cto_count} CTO wallets)")
+                continue
 
         signal = Signal.buy if score >= BUY_THRESHOLD else Signal.watch
 
@@ -824,6 +894,9 @@ async def generate_callouts(db: AsyncSession) -> list[Callout]:
             # Deep intelligence fields
             deployer_rug_count=getattr(token, "deployer_rug_count", None) or None,
             conviction_score=getattr(token, "conviction_score", None),
+            # CTO tracking fields
+            cto_wallet_count=cto_count if cto_count > 0 else None,
+            is_cto_revival=is_cto_revival or None,
             created_at=datetime.now(timezone.utc),
         )
         db.add(callout)
