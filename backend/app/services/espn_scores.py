@@ -611,11 +611,14 @@ class ESPNScoreProvider:
         if espn_lower in our_lower or our_lower in espn_lower:
             return True
 
-        # Check if last word (team nickname) matches
+        # Check if last word (team nickname) matches — but skip generic words
+        # that are shared across many teams (e.g. "United", "City", "FC")
+        GENERIC_NICKNAMES = {"united", "city", "fc", "sc", "cf"}
         espn_parts = espn_lower.split()
         our_parts = our_lower.split()
         if espn_parts and our_parts and espn_parts[-1] == our_parts[-1]:
-            return True
+            if espn_parts[-1] not in GENERIC_NICKNAMES:
+                return True
 
         # Handle common abbreviations
         abbreviations = {

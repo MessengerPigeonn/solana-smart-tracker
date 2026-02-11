@@ -953,6 +953,10 @@ async def settle_predictions(db: AsyncSession) -> int:
         if pred.bet_type == "parlay":
             continue
 
+        # Skip games that haven't started yet — can't be finished
+        if pred.commence_time and pred.commence_time > now:
+            continue
+
         # ── Try Odds API match first ──────────────────────────────────
         score_event = scores_by_event.get(pred.event_id)
 
@@ -1128,19 +1132,31 @@ async def settle_predictions(db: AsyncSession) -> int:
 
 
 def _match_to_espn(pred, espn_games: list) -> "LiveGameScore | None":
-    """Match a prediction to a finished ESPN game by team name."""
+    """Match a prediction to a finished ESPN game by team name.
+
+    Guards:
+    - Game must have started (commence_time in the past)
+    - Both teams must match (home↔home AND away↔away, OR swapped)
+    - Each team must match independently (no cross-contamination via shared nicknames)
+    """
     from app.services.espn_scores import espn_provider
 
+    # Don't settle games that haven't started yet
+    if pred.commence_time and pred.commence_time > datetime.now(timezone.utc):
+        return None
+
     for game in espn_games:
-        home_match = (
+        # Try direct mapping: ESPN home = our home, ESPN away = our away
+        direct = (
             espn_provider.match_team(game.home_team, pred.home_team)
-            or espn_provider.match_team(game.home_team, pred.away_team)
+            and espn_provider.match_team(game.away_team, pred.away_team)
         )
-        away_match = (
-            espn_provider.match_team(game.away_team, pred.away_team)
-            or espn_provider.match_team(game.away_team, pred.home_team)
+        # Try swapped mapping: ESPN home = our away, ESPN away = our home
+        swapped = (
+            espn_provider.match_team(game.home_team, pred.away_team)
+            and espn_provider.match_team(game.away_team, pred.home_team)
         )
-        if home_match and away_match:
+        if direct or swapped:
             return game
     return None
 
