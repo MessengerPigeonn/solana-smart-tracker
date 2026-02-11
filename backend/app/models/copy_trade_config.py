@@ -27,6 +27,8 @@ class CopyTradeConfig(Base):
     min_liquidity: Mapped[float] = mapped_column(Float, default=5000.0, nullable=False)
     min_market_cap: Mapped[float] = mapped_column(Float, default=10000.0, nullable=False)
     skip_print_scan: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    skip_bundled_tokens: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    strict_safety: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     trading_wallet_pubkey: Mapped[Optional[str]] = mapped_column(
         String(44), nullable=True, default=None
     )

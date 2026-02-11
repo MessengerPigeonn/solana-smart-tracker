@@ -10,6 +10,7 @@ from app.models.trading_wallet import TradingWallet
 from app.models.prediction import Prediction
 from app.models.smart_wallet import SmartWallet
 from app.models.token_snapshot import TokenSnapshot
+from app.models.wallet_token_appearance import WalletTokenAppearance
 
 __all__ = [
     "User",
@@ -24,4 +25,5 @@ __all__ = [
     "Prediction",
     "SmartWallet",
     "TokenSnapshot",
+    "WalletTokenAppearance",
 ]

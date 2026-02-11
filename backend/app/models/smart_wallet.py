@@ -19,3 +19,6 @@ class SmartWallet(Base):
     first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     reputation_score: Mapped[float] = mapped_column(Float, default=0.0)
+    recent_trades_7d: Mapped[int] = mapped_column(Integer, default=0)
+    recent_wins_7d: Mapped[int] = mapped_column(Integer, default=0)
+    recent_pnl_7d: Mapped[float] = mapped_column(Float, default=0.0)

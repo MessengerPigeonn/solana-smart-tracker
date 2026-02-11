@@ -57,6 +57,13 @@ class ScannedToken(Base):
     bundle_wallet_count: Mapped[int] = mapped_column(Integer, default=0)
     bundle_risk: Mapped[str] = mapped_column(String(10), default="none") # none/low/medium/high
 
+    # Deep intelligence fields
+    deployer_address: Mapped[Optional[str]] = mapped_column(String(44), nullable=True, default=None)
+    deployer_rug_count: Mapped[int] = mapped_column(Integer, default=0)
+    deployer_token_count: Mapped[int] = mapped_column(Integer, default=0)
+    early_buyer_hold_rate: Mapped[Optional[float]] = mapped_column(Float, nullable=True, default=None)
+    conviction_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True, default=None)
+
     last_scanned: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )

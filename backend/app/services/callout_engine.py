@@ -291,6 +291,11 @@ async def _score_micro_token(db: AsyncSession, token: ScannedToken) -> tuple[flo
     if bundle_pct > 10 and bundle_held_pct < bundle_pct * 0.3:
         penalty -= 5
         reasons.append("bundlers dumping supply")
+    # Serial rugger deployer penalty (micro-cap — harshest)
+    deployer_rug_count = getattr(token, "deployer_rug_count", 0) or 0
+    if deployer_rug_count >= 2:
+        penalty -= 15
+        reasons.insert(0, f"serial rugger deployer ({deployer_rug_count} rugs)")
     penalty = max(penalty, -30)
     breakdown["anti_rug"] = round(penalty, 1)
 
@@ -307,10 +312,22 @@ async def _score_micro_token(db: AsyncSession, token: ScannedToken) -> tuple[flo
             reasons.append("real-time smart wallet buy")
     breakdown["hot_token"] = round(hot_bonus, 1)
 
+    # --- 12. Conviction Bonus (+5 for high early buyer conviction) ---
+    conviction_bonus = 0.0
+    token_conviction = getattr(token, "conviction_score", None)
+    if token_conviction is not None:
+        if token_conviction > 70:
+            conviction_bonus = 5.0
+            reasons.append(f"high early buyer conviction ({token_conviction:.0f})")
+        elif token_conviction < 20:
+            conviction_bonus = -3.0
+            reasons.append("early buyers dumping")
+    breakdown["conviction"] = round(conviction_bonus, 1)
+
     total_score = (
         security_score + early_buyer_score + holder_score + vol_vel_score
         + freshness_score + buy_sell_score + liquidity_score + social_score
-        + overlap_bonus + hot_bonus + penalty
+        + overlap_bonus + hot_bonus + conviction_bonus + penalty
     )
     total_score = round(max(min(total_score, 100), 0), 1)
 
@@ -582,6 +599,11 @@ async def score_token(
     if bundle_pct > 15 and bundle_held_pct < bundle_pct * 0.3:
         penalty -= 5
         reasons.append("bundlers dumping")
+    # Serial rugger deployer penalty (trending — milder than micro)
+    deployer_rug_count = getattr(token, "deployer_rug_count", 0) or 0
+    if deployer_rug_count >= 2:
+        penalty -= 10
+        reasons.append(f"serial rugger deployer ({deployer_rug_count} rugs)")
     penalty = max(penalty, -20)
     breakdown["anti_rug"] = round(penalty, 1)
 
@@ -598,11 +620,24 @@ async def score_token(
             reasons.append("real-time smart wallet buy")
     breakdown["hot_token"] = round(hot_bonus, 1)
 
+    # --- 14. Conviction Bonus (+3 for high early buyer conviction) ---
+    conviction_bonus = 0.0
+    token_conviction = getattr(token, "conviction_score", None)
+    if token_conviction is not None:
+        if token_conviction > 70:
+            conviction_bonus = 3.0
+            reasons.append(f"high early buyer conviction ({token_conviction:.0f})")
+        elif token_conviction < 20:
+            conviction_bonus = -3.0
+            reasons.append("early buyers dumping")
+    breakdown["conviction"] = round(conviction_bonus, 1)
+
     # ── Total ────────────────────────────────────────────────────────
     total_score = (
         smart_wallet_score + vol_vel_score + buy_sell_score + early_buyer_score
         + momentum_score + freshness_score + holder_score + liquidity_score
-        + sec_score + social_score + overlap_bonus + hot_bonus + penalty
+        + sec_score + social_score + overlap_bonus + hot_bonus
+        + conviction_bonus + penalty
     )
     total_score = round(max(min(total_score, 100), 0), 1)
 
@@ -786,6 +821,9 @@ async def generate_callouts(db: AsyncSession) -> list[Callout]:
             bundle_pct=getattr(token, "bundle_pct", None) or None,
             bundle_held_pct=getattr(token, "bundle_held_pct", None) or None,
             bundle_risk=getattr(token, "bundle_risk", None) or None,
+            # Deep intelligence fields
+            deployer_rug_count=getattr(token, "deployer_rug_count", None) or None,
+            conviction_score=getattr(token, "conviction_score", None),
             created_at=datetime.now(timezone.utc),
         )
         db.add(callout)

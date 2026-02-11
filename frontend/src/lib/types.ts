@@ -24,6 +24,8 @@ export interface Callout {
   bundle_pct?: number | null;
   bundle_held_pct?: number | null;
   bundle_risk?: string | null;
+  deployer_rug_count?: number | null;
+  conviction_score?: number | null;
   dexscreener_url?: string;
   created_at: string;
 }
@@ -85,6 +87,8 @@ export interface CopyTradeConfig {
   min_liquidity: number;
   min_market_cap: number;
   skip_print_scan: boolean;
+  skip_bundled_tokens: boolean;
+  strict_safety: boolean;
   trading_wallet_pubkey: string | null;
   created_at: string;
   updated_at: string;

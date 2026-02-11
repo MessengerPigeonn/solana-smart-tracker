@@ -43,7 +43,7 @@ class BundleAnalysis:
         "same_slot_groups", "has_consecutive_indices", "stagger_group_count",
         "amount_cv", "common_funder",
         "estimated_bundle_pct", "estimated_held_pct",
-        "risk_level", "details",
+        "risk_level", "details", "warmup_detected",
     )
 
     def __init__(self):
@@ -59,6 +59,7 @@ class BundleAnalysis:
         self.estimated_held_pct: float = 0.0    # Estimated % still held by bundle wallets
         self.risk_level: str = "none"           # none / low / medium / high
         self.details: list[str] = []
+        self.warmup_detected: bool = False      # True if bundled wallets show warmup patterns
 
     def to_dict(self) -> dict:
         return {
@@ -72,6 +73,7 @@ class BundleAnalysis:
             "estimated_held_pct": round(self.estimated_held_pct, 1),
             "risk_level": self.risk_level,
             "details": self.details,
+            "warmup_detected": self.warmup_detected,
         }
 
 
@@ -281,6 +283,28 @@ class BundleAnalyzer:
             # Determine risk level
             analysis.risk_level = _calculate_risk_level(analysis)
 
+            # ─── 5. Warmup detection on bundle wallets ──────────────────
+            try:
+                from app.services.wallet_profiler import wallet_profiler
+                profile_addrs = analysis.bundle_wallets[:5]
+                if len(profile_addrs) >= 2:
+                    profiles = await wallet_profiler.batch_profile_wallets(profile_addrs)
+                    if profiles:
+                        avg_warmup = sum(p.warmup_score for p in profiles) / len(profiles)
+                        if avg_warmup > 0.5:
+                            analysis.warmup_detected = True
+                            # Bump risk level up one tier
+                            if analysis.risk_level == "low":
+                                analysis.risk_level = "medium"
+                            elif analysis.risk_level == "medium":
+                                analysis.risk_level = "high"
+                            analysis.details.append(
+                                f"warmup detected: avg score {avg_warmup:.2f} "
+                                f"across {len(profiles)} bundled wallets"
+                            )
+            except Exception as e:
+                logger.debug(f"BundleAnalyzer: warmup check failed: {e}")
+
         # Cache and return
         self._cache[token_address] = (time.monotonic(), analysis)
         logger.info(
@@ -292,53 +316,117 @@ class BundleAnalyzer:
         )
         return analysis
 
-    async def _trace_common_funder(self, wallet_addresses: list[str]) -> Optional[str]:
-        """Check if multiple wallets received SOL from the same source.
+    async def _extract_funders(self, addr: str) -> list[str]:
+        """Extract SOL funders for a single wallet address."""
+        funders = []
+        try:
+            txs = await self._helius_get(
+                f"/addresses/{addr}/transactions",
+                params={"limit": 10},
+            )
+            if not isinstance(txs, list):
+                return funders
 
-        Examines the most recent non-SWAP transactions for each wallet
-        looking for SOL transfers. If 3+ wallets share a funder, return it.
+            for tx in txs:
+                native_transfers = tx.get("nativeTransfers", [])
+                for nt in native_transfers:
+                    if (
+                        nt.get("toUserAccount") == addr
+                        and nt.get("fromUserAccount")
+                        and nt.get("amount", 0) > 0
+                    ):
+                        funder = nt["fromUserAccount"]
+                        if not funder.startswith("1111") and len(funder) > 30:
+                            funders.append(funder)
+        except Exception as e:
+            logger.debug(f"BundleAnalyzer: funding trace failed for {addr[:8]}: {e}")
+        return funders
+
+    async def _trace_common_funder(
+        self, wallet_addresses: list[str], max_hops: int = 2
+    ) -> Optional[str]:
+        """Multi-hop funding trace. Check if wallets share a common SOL source.
+
+        Hop 1: wallet → direct funder
+        Hop 2: funder → funder's funder (only if hop 1 finds no match)
+        If 3+ wallets share any node in the funding graph → common funder.
         """
         if len(wallet_addresses) < 3:
             return None
 
+        # ── Hop 1: direct funders ──
+        # wallet_address → list of direct funders
+        wallet_funders: dict[str, list[str]] = {}
         funder_counts: dict[str, int] = defaultdict(int)
         checked = 0
 
-        for addr in wallet_addresses[:8]:  # Limit API calls
-            try:
-                txs = await self._helius_get(
-                    f"/addresses/{addr}/transactions",
-                    params={"limit": 10},
-                )
-                if not isinstance(txs, list):
+        for addr in wallet_addresses[:8]:
+            cache_key = f"funder_{addr}"
+            if cache_key in self._cache:
+                ts, cached_funders = self._cache[cache_key]
+                if time.monotonic() - ts < self._cache_ttl:
+                    wallet_funders[addr] = cached_funders
+                    for f in cached_funders:
+                        funder_counts[f] += 1
+                    checked += 1
                     continue
 
-                for tx in txs:
-                    # Look for native SOL transfers TO this wallet
-                    native_transfers = tx.get("nativeTransfers", [])
-                    for nt in native_transfers:
-                        if (
-                            nt.get("toUserAccount") == addr
-                            and nt.get("fromUserAccount")
-                            and nt.get("amount", 0) > 0
-                        ):
-                            funder = nt["fromUserAccount"]
-                            # Skip system programs and known DEX routers
-                            if not funder.startswith("1111") and len(funder) > 30:
-                                funder_counts[funder] += 1
-
-                checked += 1
-                await asyncio.sleep(0.3)  # Rate limit
-            except Exception as e:
-                logger.debug(f"BundleAnalyzer: funding trace failed for {addr[:8]}: {e}")
+            funders = await self._extract_funders(addr)
+            wallet_funders[addr] = funders
+            self._cache[cache_key] = (time.monotonic(), funders)
+            for f in funders:
+                funder_counts[f] += 1
+            checked += 1
+            await asyncio.sleep(0.3)
 
         if checked < 3:
             return None
 
-        # Find funder that funded 3+ of the checked wallets
+        # Check hop 1 results
         for funder, count in sorted(funder_counts.items(), key=lambda x: -x[1]):
             if count >= 3:
                 return funder
+
+        # ── Hop 2: trace funders' funders (only if hop 1 found no match) ──
+        if max_hops < 2:
+            return None
+
+        # Collect unique hop-1 funders to trace further
+        hop1_funders = set()
+        for funders in wallet_funders.values():
+            hop1_funders.update(funders)
+
+        # Map: hop2_funder → set of original wallets that connect to it
+        hop2_graph: dict[str, set[str]] = defaultdict(set)
+
+        for hop1_funder in list(hop1_funders)[:8]:
+            cache_key = f"funder_{hop1_funder}"
+            if cache_key in self._cache:
+                ts, cached_funders = self._cache[cache_key]
+                if time.monotonic() - ts < self._cache_ttl:
+                    hop2_funders = cached_funders
+                else:
+                    hop2_funders = await self._extract_funders(hop1_funder)
+                    self._cache[cache_key] = (time.monotonic(), hop2_funders)
+                    await asyncio.sleep(0.3)
+            else:
+                hop2_funders = await self._extract_funders(hop1_funder)
+                self._cache[cache_key] = (time.monotonic(), hop2_funders)
+                await asyncio.sleep(0.3)
+
+            # Map hop2 funders back to original wallets
+            for h2f in hop2_funders:
+                # Find which original wallets connect through this hop1_funder
+                for orig_wallet, orig_funders in wallet_funders.items():
+                    if hop1_funder in orig_funders:
+                        hop2_graph[h2f].add(orig_wallet)
+
+        # Check if any hop-2 funder connects 3+ original wallets
+        for h2_funder, connected_wallets in sorted(
+            hop2_graph.items(), key=lambda x: -len(x[1])
+        ):
+            if len(connected_wallets) >= 3:
+                return h2_funder
 
         return None
 

@@ -36,6 +36,8 @@ interface CalloutCardProps {
   bundlePct?: number | null;
   bundleHeldPct?: number | null;
   bundleRisk?: string | null;
+  convictionScore?: number | null;
+  deployerRugCount?: number | null;
 }
 
 export function CalloutCard({
@@ -67,6 +69,8 @@ export function CalloutCard({
   bundlePct,
   bundleHeldPct,
   bundleRisk,
+  convictionScore,
+  deployerRugCount,
 }: CalloutCardProps) {
   const [copied, setCopied] = useState(false);
 
@@ -292,6 +296,34 @@ export function CalloutCard({
                 {bundleHeldPct != null && bundlePct != null && bundlePct > 0
                   ? ` (${bundleHeldPct < bundlePct * 0.3 ? "dumping" : "holding"})`
                   : ""}
+              </span>
+            </div>
+          )}
+
+          {/* Conviction badge */}
+          {convictionScore != null && convictionScore > 70 && (
+            <div className="flex items-center gap-0.5 text-green-500">
+              <Shield className="h-3 w-3" />
+              <span className="text-[10px] font-medium">
+                High Conviction {convictionScore.toFixed(0)}
+              </span>
+            </div>
+          )}
+          {convictionScore != null && convictionScore < 20 && (
+            <div className="flex items-center gap-0.5 text-red-500">
+              <TrendingDown className="h-3 w-3" />
+              <span className="text-[10px] font-medium">
+                Low Conviction
+              </span>
+            </div>
+          )}
+
+          {/* Serial rugger warning */}
+          {deployerRugCount != null && deployerRugCount >= 2 && (
+            <div className="flex items-center gap-0.5 text-red-500">
+              <AlertTriangle className="h-3 w-3" />
+              <span className="text-[10px] font-medium">
+                Serial Rugger ({deployerRugCount} rugs)
               </span>
             </div>
           )}

@@ -40,6 +40,33 @@ def evaluate_callout(callout: Callout, config: CopyTradeConfig) -> Tuple[bool, s
     if config.skip_print_scan and callout.scan_source == "print_scan":
         return False, "Print scan tokens skipped by config"
 
+    # Bundle risk gate
+    bundle_risk = getattr(callout, "bundle_risk", None)
+    if bundle_risk == "high":
+        return False, "High bundle risk detected"
+    if bundle_risk == "medium" and config.skip_bundled_tokens:
+        return False, "Medium bundle risk — skipped by config"
+
+    # Bundle dump gate
+    bundle_pct = getattr(callout, "bundle_pct", 0) or 0
+    bundle_held_pct = getattr(callout, "bundle_held_pct", 0) or 0
+    if bundle_pct > 15 and bundle_held_pct < bundle_pct * 0.3:
+        return False, "Bundlers actively dumping"
+
+    # Deployer rug gate
+    deployer_rug_count = getattr(callout, "deployer_rug_count", 0) or 0
+    if deployer_rug_count >= 2:
+        return False, f"Serial rugger deployer ({deployer_rug_count} rugs)"
+
+    # Conviction gate
+    conviction_score = getattr(callout, "conviction_score", None)
+    if conviction_score is not None and conviction_score < 20:
+        return False, f"Low conviction score ({conviction_score:.0f}) — early buyers dumping"
+
+    # Strict safety score floor
+    if config.strict_safety and callout.score < 60:
+        return False, f"Score {callout.score} below strict safety floor (60)"
+
     return True, "Eligible"
 
 

@@ -121,8 +121,17 @@ def compute_reputation_score(wallet: SmartWallet) -> float:
     """Compute 0-100 reputation score based on wallet stats."""
     score = 0.0
 
+    # Blend recent and all-time win rate
+    recent_trades = getattr(wallet, 'recent_trades_7d', 0) or 0
+    recent_wins = getattr(wallet, 'recent_wins_7d', 0) or 0
+    if recent_trades >= 3:
+        recent_wr = recent_wins / max(recent_trades, 1)
+        effective_wr = 0.6 * recent_wr + 0.4 * wallet.win_rate
+    else:
+        effective_wr = wallet.win_rate
+
     # Win rate component (max 40 pts)
-    score += min(wallet.win_rate, 1.0) * 40
+    score += min(effective_wr, 1.0) * 40
 
     # Trade count component (max 20 pts)
     score += min(wallet.total_trades / 50, 1.0) * 20
@@ -174,6 +183,9 @@ async def update_wallet_stats(db: AsyncSession, wallet_address: str, trade_data:
             total_pnl=pnl,
             avg_entry_mcap=mcap,
             tokens_traded=1,
+            recent_trades_7d=1,
+            recent_wins_7d=1 if is_win else 0,
+            recent_pnl_7d=pnl,
             first_seen=now,
             last_seen=now,
         )
@@ -191,6 +203,10 @@ async def update_wallet_stats(db: AsyncSession, wallet_address: str, trade_data:
                 / wallet.total_trades
             )
         wallet.tokens_traded = wallet.tokens_traded + 1  # approximate, may double-count
+        wallet.recent_trades_7d = (wallet.recent_trades_7d or 0) + 1
+        if is_win:
+            wallet.recent_wins_7d = (wallet.recent_wins_7d or 0) + 1
+        wallet.recent_pnl_7d = (wallet.recent_pnl_7d or 0) + pnl
         wallet.last_seen = now
 
     # Reclassify and update reputation
@@ -354,3 +370,16 @@ async def get_reputable_wallets_buying_recently(db: AsyncSession, min_reputation
         )
     )
     return list(result.scalars().all())
+
+
+async def decay_recent_stats(db: AsyncSession):
+    """Decay recent 7d counters by 50%. Call daily."""
+    result = await db.execute(
+        select(SmartWallet).where(SmartWallet.recent_trades_7d > 0)
+    )
+    wallets = result.scalars().all()
+    for wallet in wallets:
+        wallet.recent_trades_7d = int((wallet.recent_trades_7d or 0) * 0.5)
+        wallet.recent_wins_7d = int((wallet.recent_wins_7d or 0) * 0.5)
+        wallet.recent_pnl_7d = (wallet.recent_pnl_7d or 0) * 0.5
+    logger.info(f"Decayed recent stats for {len(wallets)} wallets")

@@ -27,6 +27,8 @@ class CopyTradeConfigUpdate(BaseModel):
     min_liquidity: Optional[float] = Field(None, ge=0)
     min_market_cap: Optional[float] = Field(None, ge=0)
     skip_print_scan: Optional[bool] = None
+    skip_bundled_tokens: Optional[bool] = None
+    strict_safety: Optional[bool] = None
 
 
 class CopyTradeConfigResponse(BaseModel):
@@ -46,6 +48,8 @@ class CopyTradeConfigResponse(BaseModel):
     min_liquidity: float = 5000.0
     min_market_cap: float = 10000.0
     skip_print_scan: bool = True
+    skip_bundled_tokens: bool = True
+    strict_safety: bool = True
     trading_wallet_pubkey: Optional[str] = None
     created_at: datetime
     updated_at: datetime

@@ -15,11 +15,14 @@ from app.services.scanner import (
     update_smart_money_counts,
     analyze_token_trades,
 )
-from app.services.wallet_classifier import update_wallet_stats, seed_known_wallets, discover_smart_wallets, mark_bundler_wallets
+from app.services.wallet_classifier import update_wallet_stats, seed_known_wallets, discover_smart_wallets, mark_bundler_wallets, decay_recent_stats
 from app.services.rugcheck import rugcheck_client
 from app.services.social_signals import social_signal_service
 from app.services.onchain_analyzer import onchain_analyzer
 from app.services.bundle_analyzer import bundle_analyzer
+from app.services.deployer_profiler import deployer_profiler
+from app.services.early_buyer_tracker import early_buyer_tracker
+from app.services.cross_token_intel import cross_token_intel
 from app.services.hot_tokens import get_and_clear_hot_tokens, add_hot_token
 from app.services.data_provider import data_provider
 
@@ -296,7 +299,63 @@ async def run_scan_worker():
                         except Exception as e:
                             logger.debug(f"Bundle analysis failed for {token.symbol}: {e}")
 
-                    logger.info(f"Enriched {len(enrich_tokens)} tokens with rugcheck/social/early-buyer/bundle data")
+                    # Deployer profiling — serial rugger detection
+                    for token in enrich_tokens[:10]:
+                        if (getattr(token, "deployer_rug_count", 0) or 0) > 0:
+                            continue  # Already profiled
+                        try:
+                            dp = await deployer_profiler.profile_deployer(token.address)
+                            if dp.deployer_address:
+                                token.deployer_address = dp.deployer_address
+                                token.deployer_rug_count = dp.tokens_rugged
+                                token.deployer_token_count = dp.tokens_created
+                            await asyncio.sleep(0.5)
+                        except Exception as e:
+                            logger.debug(f"Deployer profiling failed for {token.symbol}: {e}")
+
+                    # Early buyer behavior tracking — conviction score
+                    for token in enrich_tokens[:10]:
+                        if getattr(token, "conviction_score", None) is not None:
+                            continue  # Already analyzed
+                        try:
+                            early_buyers = await onchain_analyzer.get_early_buyers(token.address, limit=20)
+                            if early_buyers and len(early_buyers) >= 3:
+                                # Get smart wallet addresses for hold rate calc
+                                buyer_addrs = [b["wallet"] for b in early_buyers]
+                                from app.services.wallet_classifier import get_smart_wallets_for_token
+                                smart_map = await get_smart_wallets_for_token(db, buyer_addrs)
+                                smart_addrs = list(smart_map.keys())
+
+                                report = await early_buyer_tracker.analyze_early_buyers(
+                                    token.address, early_buyers, smart_wallet_addresses=smart_addrs
+                                )
+                                token.early_buyer_hold_rate = report.hold_rate
+                                token.conviction_score = report.conviction_score
+
+                                # Record appearances for cross-token intel
+                                appearance_data = [
+                                    {"wallet": b["wallet"], "role": "early_buyer"}
+                                    for b in early_buyers[:20]
+                                ]
+                                await cross_token_intel.record_appearances(db, token.address, appearance_data)
+
+                                # Also record bundler wallets if any
+                                if (getattr(token, "bundle_wallet_count", 0) or 0) > 0:
+                                    from app.services.bundle_analyzer import bundle_analyzer as ba
+                                    cached = ba._cache.get(token.address)
+                                    if cached:
+                                        _, analysis = cached
+                                        bundler_data = [
+                                            {"wallet": w, "role": "bundler"}
+                                            for w in analysis.bundle_wallets[:10]
+                                        ]
+                                        await cross_token_intel.record_appearances(db, token.address, bundler_data)
+
+                            await asyncio.sleep(0.5)
+                        except Exception as e:
+                            logger.debug(f"Early buyer tracking failed for {token.symbol}: {e}")
+
+                    logger.info(f"Enriched {len(enrich_tokens)} tokens with rugcheck/social/early-buyer/bundle/deployer/conviction data")
 
                 # Every 120 cycles (~60 min): discover new smart wallets from successful callouts
                 if cycle % 120 == 0 and cycle > 0:
@@ -304,6 +363,13 @@ async def run_scan_worker():
                         await discover_smart_wallets(db)
                     except Exception as e:
                         logger.warning(f"Smart wallet discovery failed: {e}")
+
+                # Every 2880 cycles (~24h): decay recent wallet stats
+                if cycle % 2880 == 0 and cycle > 0:
+                    try:
+                        await decay_recent_stats(db)
+                    except Exception as e:
+                        logger.warning(f"Wallet stats decay failed: {e}")
 
                 # Every 20 cycles (~10 min): cleanup old snapshots
                 if cycle % 20 == 0 and cycle > 0:
