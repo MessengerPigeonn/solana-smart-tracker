@@ -15,10 +15,11 @@ from app.services.scanner import (
     update_smart_money_counts,
     analyze_token_trades,
 )
-from app.services.wallet_classifier import update_wallet_stats, seed_known_wallets, discover_smart_wallets
+from app.services.wallet_classifier import update_wallet_stats, seed_known_wallets, discover_smart_wallets, mark_bundler_wallets
 from app.services.rugcheck import rugcheck_client
 from app.services.social_signals import social_signal_service
 from app.services.onchain_analyzer import onchain_analyzer
+from app.services.bundle_analyzer import bundle_analyzer
 from app.services.hot_tokens import get_and_clear_hot_tokens, add_hot_token
 from app.services.data_provider import data_provider
 
@@ -278,7 +279,24 @@ async def run_scan_worker():
                         except Exception as e:
                             logger.debug(f"Early buyer analysis failed for {token.symbol}: {e}")
 
-                    logger.info(f"Enriched {len(enrich_tokens)} tokens with rugcheck/social/early-buyer data")
+                    # Bundle detection via Helius
+                    for token in enrich_tokens[:10]:
+                        if (getattr(token, "bundle_wallet_count", 0) or 0) > 0:
+                            continue  # Already analyzed
+                        try:
+                            analysis = await bundle_analyzer.analyze_token(token.address)
+                            token.bundle_pct = analysis.estimated_bundle_pct
+                            token.bundle_held_pct = analysis.estimated_held_pct
+                            token.bundle_wallet_count = analysis.bundle_wallet_count
+                            token.bundle_risk = analysis.risk_level
+                            # Mark bundler wallets in SmartWallet DB
+                            if analysis.bundle_wallets:
+                                await mark_bundler_wallets(db, analysis.bundle_wallets)
+                            await asyncio.sleep(0.5)
+                        except Exception as e:
+                            logger.debug(f"Bundle analysis failed for {token.symbol}: {e}")
+
+                    logger.info(f"Enriched {len(enrich_tokens)} tokens with rugcheck/social/early-buyer/bundle data")
 
                 # Every 120 cycles (~60 min): discover new smart wallets from successful callouts
                 if cycle % 120 == 0 and cycle > 0:

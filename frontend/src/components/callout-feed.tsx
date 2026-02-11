@@ -129,6 +129,9 @@ export function CalloutFeed({ initialCallouts, enableSSE, signalFilter }: Callou
             socialMentions={c.social_mentions}
             earlySmartBuyers={c.early_smart_buyers}
             volumeVelocity={c.volume_velocity}
+            bundlePct={c.bundle_pct}
+            bundleHeldPct={c.bundle_held_pct}
+            bundleRisk={c.bundle_risk}
           />
         ))
       )}

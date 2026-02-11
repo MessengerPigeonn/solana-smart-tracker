@@ -33,6 +33,9 @@ interface CalloutCardProps {
   socialMentions?: number | null;
   earlySmartBuyers?: number | null;
   volumeVelocity?: number | null;
+  bundlePct?: number | null;
+  bundleHeldPct?: number | null;
+  bundleRisk?: string | null;
 }
 
 export function CalloutCard({
@@ -61,6 +64,9 @@ export function CalloutCard({
   socialMentions,
   earlySmartBuyers,
   volumeVelocity,
+  bundlePct,
+  bundleHeldPct,
+  bundleRisk,
 }: CalloutCardProps) {
   const [copied, setCopied] = useState(false);
 
@@ -273,6 +279,21 @@ export function CalloutCard({
             <span className="text-[10px] text-muted-foreground">
               𝕏 {socialMentions}
             </span>
+          )}
+
+          {/* Bundle warning */}
+          {bundleRisk && bundleRisk !== "none" && (
+            <div className={`flex items-center gap-0.5 ${
+              bundleRisk === "high" ? "text-red-500" : bundleRisk === "medium" ? "text-orange-400" : "text-yellow-500"
+            }`}>
+              <AlertTriangle className="h-3 w-3" />
+              <span className="text-[10px] font-medium">
+                Bundled {bundlePct != null ? `${bundlePct.toFixed(0)}%` : ""}
+                {bundleHeldPct != null && bundlePct != null && bundlePct > 0
+                  ? ` (${bundleHeldPct < bundlePct * 0.3 ? "dumping" : "holding"})`
+                  : ""}
+              </span>
+            </div>
           )}
         </div>
 

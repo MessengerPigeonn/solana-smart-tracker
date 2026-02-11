@@ -33,6 +33,7 @@ WALLET_TYPE_WEIGHTS = {
     "insider": 1.5,
     "smart_money": 1.0,
     "promising": 0.5,
+    "bundler": 0.0,  # Bundler wallets don't contribute positive signal
     "unknown": 0.0,
 }
 
@@ -274,6 +275,22 @@ async def _score_micro_token(db: AsyncSession, token: ScannedToken) -> tuple[flo
         reasons.insert(0, "HIGH RUG RISK")
     if (token.top10_holder_pct or 0) > 90:
         penalty -= 5
+    # Bundle risk penalty (micro-cap — harsher since supply is smaller)
+    bundle_risk = getattr(token, "bundle_risk", "none") or "none"
+    bundle_pct = getattr(token, "bundle_pct", 0) or 0
+    bundle_held_pct = getattr(token, "bundle_held_pct", 0) or 0
+    if bundle_risk == "high":
+        penalty -= 15
+        reasons.insert(0, f"BUNDLED ({bundle_pct:.0f}% supply)")
+    elif bundle_risk == "medium":
+        penalty -= 8
+        reasons.append(f"bundle detected ({bundle_pct:.0f}% supply)")
+    elif bundle_risk == "low" and bundle_pct > 15:
+        penalty -= 3
+    # If bundlers are dumping (held << bundled), extra penalty
+    if bundle_pct > 10 and bundle_held_pct < bundle_pct * 0.3:
+        penalty -= 5
+        reasons.append("bundlers dumping supply")
     penalty = max(penalty, -30)
     breakdown["anti_rug"] = round(penalty, 1)
 
@@ -551,6 +568,20 @@ async def score_token(
     # Mint authority on trending = mild concern
     if token.has_mint_authority:
         penalty -= 3
+    # Bundle risk penalty (trending — more lenient since these have survived)
+    bundle_risk = getattr(token, "bundle_risk", "none") or "none"
+    bundle_pct = getattr(token, "bundle_pct", 0) or 0
+    bundle_held_pct = getattr(token, "bundle_held_pct", 0) or 0
+    if bundle_risk == "high":
+        penalty -= 10
+        reasons.append(f"bundled launch ({bundle_pct:.0f}% supply)")
+    elif bundle_risk == "medium":
+        penalty -= 5
+        reasons.append(f"bundle detected ({bundle_pct:.0f}% supply)")
+    # Bundlers dumping = red flag even for trending tokens
+    if bundle_pct > 15 and bundle_held_pct < bundle_pct * 0.3:
+        penalty -= 5
+        reasons.append("bundlers dumping")
     penalty = max(penalty, -20)
     breakdown["anti_rug"] = round(penalty, 1)
 
@@ -751,6 +782,10 @@ async def generate_callouts(db: AsyncSession) -> list[Callout]:
             social_mentions=token.social_mention_count,
             early_smart_buyers=token.early_buyer_smart_count,
             volume_velocity=velocity,
+            # Bundle detection fields
+            bundle_pct=getattr(token, "bundle_pct", None) or None,
+            bundle_held_pct=getattr(token, "bundle_held_pct", None) or None,
+            bundle_risk=getattr(token, "bundle_risk", None) or None,
             created_at=datetime.now(timezone.utc),
         )
         db.add(callout)

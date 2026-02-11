@@ -21,6 +21,9 @@ export interface Callout {
   social_mentions?: number | null;
   early_smart_buyers?: number | null;
   volume_velocity?: number | null;
+  bundle_pct?: number | null;
+  bundle_held_pct?: number | null;
+  bundle_risk?: string | null;
   dexscreener_url?: string;
   created_at: string;
 }

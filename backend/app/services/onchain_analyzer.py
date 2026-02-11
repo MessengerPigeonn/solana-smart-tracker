@@ -176,23 +176,97 @@ class OnChainAnalyzer:
         self._cache[cache_key] = (time.monotonic(), result)
         return result[:20]
 
-    async def detect_wallet_clustering(self, wallets: list[str]) -> dict:
-        """Check if wallets share funding source (simplified version).
+    async def detect_wallet_clustering(self, wallets: list[str], token_address: str = "") -> dict:
+        """Check if wallets share funding source or exhibit coordinated behavior.
 
-        For MVP: Just check if multiple wallets appeared in the same block
-        (suspiciously timed = likely bot/insider coordination).
+        Analyzes:
+        1. Common funding sources (SOL transfers from same wallet)
+        2. Same-slot buying patterns (if token_address provided)
+        3. Wallet age similarity (all created around the same time)
 
-        Returns: {clustered: bool, cluster_count: int, suspicious_pairs: list}
+        Returns: {clustered: bool, cluster_count: int, suspicious_pairs: list,
+                  common_funder: str|None, same_slot_wallets: list}
         """
         if len(wallets) < 2:
-            return {"clustered": False, "cluster_count": 0, "suspicious_pairs": []}
+            return {"clustered": False, "cluster_count": 0, "suspicious_pairs": [],
+                    "common_funder": None, "same_slot_wallets": []}
 
-        # This is expensive, so we keep it simple for now
-        # Just return the count of wallets — clustering detection can be enhanced later
+        from collections import defaultdict
+
+        funder_map: dict[str, list[str]] = defaultdict(list)  # funder -> [funded wallets]
+        checked = 0
+
+        # Check funding sources for up to 10 wallets
+        for wallet in wallets[:10]:
+            try:
+                txs = await self._api_get(
+                    f"/addresses/{wallet}/transactions",
+                    params={"limit": 10},
+                )
+                if not isinstance(txs, list):
+                    continue
+
+                for tx in txs:
+                    for nt in tx.get("nativeTransfers", []):
+                        if (
+                            nt.get("toUserAccount") == wallet
+                            and nt.get("fromUserAccount")
+                            and nt.get("amount", 0) > 0
+                        ):
+                            funder = nt["fromUserAccount"]
+                            if not funder.startswith("1111") and len(funder) > 30:
+                                funder_map[funder].append(wallet)
+
+                checked += 1
+                await asyncio.sleep(0.3)
+            except Exception as e:
+                logger.debug(f"Clustering check failed for {wallet[:8]}: {e}")
+
+        # Find clusters: funders that sent SOL to 3+ wallets
+        suspicious_pairs = []
+        common_funder = None
+        cluster_count = 0
+
+        for funder, funded_wallets in funder_map.items():
+            unique_funded = list(set(funded_wallets))
+            if len(unique_funded) >= 3:
+                common_funder = funder
+                cluster_count = len(unique_funded)
+                # Build pairs
+                for i, w1 in enumerate(unique_funded):
+                    for w2 in unique_funded[i + 1:]:
+                        suspicious_pairs.append({"wallet1": w1, "wallet2": w2, "funder": funder})
+
+        # Check same-slot buys if token_address provided
+        same_slot_wallets = []
+        if token_address and checked > 0:
+            try:
+                txs = await self._api_get(
+                    f"/addresses/{token_address}/transactions",
+                    params={"limit": 50, "type": "SWAP"},
+                )
+                if isinstance(txs, list):
+                    slot_wallets: dict[int, list[str]] = defaultdict(list)
+                    wallet_set = set(wallets)
+                    for tx in txs:
+                        fp = tx.get("feePayer", "")
+                        slot = tx.get("slot", 0)
+                        if fp in wallet_set and slot > 0:
+                            slot_wallets[slot].append(fp)
+                    for slot, ws in slot_wallets.items():
+                        if len(ws) >= 2:
+                            same_slot_wallets.extend(ws)
+            except Exception as e:
+                logger.debug(f"Same-slot check failed for {token_address[:8]}: {e}")
+
+        clustered = cluster_count >= 3 or len(same_slot_wallets) >= 2
+
         return {
-            "clustered": False,
-            "cluster_count": 0,
-            "suspicious_pairs": [],
+            "clustered": clustered,
+            "cluster_count": cluster_count,
+            "suspicious_pairs": suspicious_pairs[:20],
+            "common_funder": common_funder,
+            "same_slot_wallets": list(set(same_slot_wallets)),
         }
 
     def clear_cache(self):

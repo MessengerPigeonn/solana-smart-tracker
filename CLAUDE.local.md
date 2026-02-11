@@ -97,10 +97,20 @@ These are the correct deep-link formats. Do NOT change without verifying against
   - **Trending (mcap >= $500K)**: Smart Wallet Signal (22), Volume Velocity (15), Early Buyer Quality (15), Buy Pressure (10), Price Momentum (8), Token Freshness (8), Holder Distribution (7), Liquidity Health (5), Security Score (5), Social Signal (5), Wallet Overlap (+5 bonus), Hot Token Boost (+5 bonus), Anti-Rug Gate (-20 penalty)
   - **Micro-cap (PrintScan)**: Security Safety (25), Early Buyer Quality (15), Holder Distribution (15), Volume Velocity (12), Freshness (10), Buy Pressure (8), Liquidity Floor (5), Social Signal (5), Wallet Overlap (+5 bonus), Anti-Rug Gate (-30 penalty)
   - Exponential freshness decay: `exp(-age/decay_constant)` instead of step functions
-  - Smart wallet classification weights: sniper 3x, KOL 2x, whale 2x, insider 1.5x, smart_money 1x, promising 0.5x
+  - Smart wallet classification weights: sniper 3x, KOL 2x, whale 2x, insider 1.5x, smart_money 1x, promising 0.5x, bundler 0x
   - Volume velocity = rate of change across last 3 TokenSnapshot cycles
-  - Callouts store `score_breakdown` JSON, `security_score`, `social_mentions`, `early_smart_buyers`, `volume_velocity`
-- **New services**: `rugcheck.py` (Rugcheck.xyz API), `social_signals.py` (DexScreener social heuristics), `wallet_classifier.py` (SmartWallet reputation), `onchain_analyzer.py` (Helius early buyer detection)
+  - Callouts store `score_breakdown` JSON, `security_score`, `social_mentions`, `early_smart_buyers`, `volume_velocity`, `bundle_pct`, `bundle_held_pct`, `bundle_risk`
+- **Bundle detection** (Feb 2026): `bundle_analyzer.py` detects coordinated launch buying via Helius Enhanced Transactions API
+  - **Same-slot detection**: Groups buys by Solana slot — 2+ buys in same ~0.4s block = Jito bundle
+  - **Staggered buy detection**: Wallets buying within 5-min window with similar amounts (coefficient of variation < 0.35)
+  - **Funding source tracing**: Checks if early buyers received SOL from a common wallet (multi-hop aware)
+  - **Risk levels**: none/low/medium/high — based on slot clusters, wallet count, supply %, common funder, amount similarity
+  - **Scoring integration**: Anti-Rug Gate penalties — high risk = -15 (micro) / -10 (trending), medium = -8 / -5; bundlers dumping (held < 30% of bundled) = extra -5
+  - **Wallet marking**: Detected bundler wallets labeled "bundler" in SmartWallet DB (0x weight in scoring)
+  - **Frontend**: Orange/red "Bundled X%" badge on callout cards with "holding"/"dumping" status
+  - **DB fields**: `bundle_pct`, `bundle_held_pct`, `bundle_wallet_count`, `bundle_risk` on scanned_tokens; `bundle_pct`, `bundle_held_pct`, `bundle_risk` on callouts
+  - **Migration**: `009_add_bundle_detection.py`
+- **New services**: `rugcheck.py` (Rugcheck.xyz API), `social_signals.py` (DexScreener social heuristics), `wallet_classifier.py` (SmartWallet reputation), `onchain_analyzer.py` (Helius early buyer detection), `bundle_analyzer.py` (Jito bundle / coordinated buy detection)
 - **New models**: `SmartWallet` (wallet reputation), `TokenSnapshot` (volume velocity time-series)
 - **Dedup**: One buy/watch callout per token EVER. No re-callouts at different market caps. Sell signals dedup at 24h.
 - **Repin feature**: Instead of creating duplicate callouts, tokens gaining traction get their original callout resurfaced to top of feed:

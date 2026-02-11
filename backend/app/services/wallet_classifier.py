@@ -136,6 +136,7 @@ def compute_reputation_score(wallet: SmartWallet) -> float:
         "kol": 15,
         "whale": 10,
         "insider": 10,
+        "bundler": 5,
         "smart_money": 10,
         "promising": 5,
         "unknown": 0,
@@ -299,6 +300,47 @@ async def get_smart_wallets_for_token(db: AsyncSession, wallet_addresses: list[s
     )
     wallets = result.scalars().all()
     return {w.wallet_address: w for w in wallets}
+
+
+async def mark_bundler_wallets(db: AsyncSession, wallet_addresses: list[str]):
+    """Mark wallets detected as part of a bundle operation.
+
+    Sets label to 'bundler' for unknown/promising wallets. Does not overwrite
+    higher-priority labels (kol, whale, sniper, smart_money).
+    """
+    now = datetime.now(timezone.utc)
+    overwritable = {"unknown", "promising"}
+    marked = 0
+
+    for address in wallet_addresses:
+        result = await db.execute(
+            select(SmartWallet).where(SmartWallet.wallet_address == address)
+        )
+        wallet = result.scalar_one_or_none()
+
+        if wallet is None:
+            wallet = SmartWallet(
+                wallet_address=address,
+                label="bundler",
+                total_trades=0,
+                winning_trades=0,
+                win_rate=0.0,
+                total_pnl=0.0,
+                avg_entry_mcap=0.0,
+                tokens_traded=0,
+                first_seen=now,
+                last_seen=now,
+                reputation_score=5.0,
+            )
+            db.add(wallet)
+            marked += 1
+        elif wallet.label in overwritable:
+            wallet.label = "bundler"
+            wallet.reputation_score = compute_reputation_score(wallet)
+            marked += 1
+
+    if marked > 0:
+        logger.info(f"Marked {marked} wallets as bundlers")
 
 
 async def get_reputable_wallets_buying_recently(db: AsyncSession, min_reputation: float = 60.0) -> list[SmartWallet]:

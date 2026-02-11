@@ -39,6 +39,10 @@ class Callout(Base):
     social_mentions: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=None)
     early_smart_buyers: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=None)
     volume_velocity: Mapped[Optional[float]] = mapped_column(Float, nullable=True, default=None)
+    # Bundle detection fields
+    bundle_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True, default=None)
+    bundle_held_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True, default=None)
+    bundle_risk: Mapped[Optional[str]] = mapped_column(String(10), nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

@@ -51,6 +51,12 @@ class ScannedToken(Base):
     rugcheck_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True, default=None)
     early_buyer_smart_count: Mapped[int] = mapped_column(Integer, default=0)
 
+    # Bundle detection fields
+    bundle_pct: Mapped[float] = mapped_column(Float, default=0.0)       # % of early supply from bundled wallets
+    bundle_held_pct: Mapped[float] = mapped_column(Float, default=0.0)  # % still held by bundle wallets
+    bundle_wallet_count: Mapped[int] = mapped_column(Integer, default=0)
+    bundle_risk: Mapped[str] = mapped_column(String(10), default="none") # none/low/medium/high
+
     last_scanned: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )

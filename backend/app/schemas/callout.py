@@ -27,6 +27,9 @@ class CalloutResponse(BaseModel):
     social_mentions: Optional[int] = None
     early_smart_buyers: Optional[int] = None
     volume_velocity: Optional[float] = None
+    bundle_pct: Optional[float] = None
+    bundle_held_pct: Optional[float] = None
+    bundle_risk: Optional[str] = None
     created_at: datetime
 
     @computed_field
