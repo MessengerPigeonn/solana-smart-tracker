@@ -8,6 +8,7 @@ from app.models.callout import Callout
 from app.models.token import ScannedToken
 from app.services.callout_engine import generate_callouts
 from app.services.data_provider import data_provider
+from app.services.hot_tokens import hot_token_queue
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +89,35 @@ async def _update_peak_market_caps(db):
         )
 
 
+async def _ensure_hot_tokens_scored(db):
+    """Touch last_scanned on hot token entries so generate_callouts() picks them up.
+
+    generate_callouts() queries ScannedToken WHERE last_scanned >= 5 minutes ago.
+    Hot tokens in the queue may have been scanned earlier or enriched by scan_worker
+    but their last_scanned could be stale.  We bump it here so they enter the
+    scoring window even if they weren't in the most recent trending scan.
+    """
+    # Peek at queue without clearing (scan_worker owns the clear)
+    addresses = list(hot_token_queue.keys())
+    if not addresses:
+        return
+
+    now = datetime.now(timezone.utc)
+    result = await db.execute(
+        select(ScannedToken).where(ScannedToken.address.in_(addresses))
+    )
+    tokens = result.scalars().all()
+    touched = 0
+    for token in tokens:
+        five_minutes_ago = now - timedelta(minutes=5)
+        if token.last_scanned is None or token.last_scanned < five_minutes_ago:
+            token.last_scanned = now
+            touched += 1
+    if touched:
+        await db.flush()
+        logger.info(f"Bumped last_scanned for {touched} hot tokens to ensure scoring")
+
+
 async def run_callout_worker():
     """Background worker that analyzes scanned data and generates callouts."""
     logger.info("Callout worker started")
@@ -98,6 +128,8 @@ async def run_callout_worker():
     while True:
         try:
             async with async_session() as db:
+                # Ensure hot tokens are eligible for scoring
+                await _ensure_hot_tokens_scored(db)
                 callouts = await generate_callouts(db)
                 await _update_peak_market_caps(db)
                 await db.commit()

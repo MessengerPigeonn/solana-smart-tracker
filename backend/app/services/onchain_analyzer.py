@@ -18,7 +18,7 @@ class OnChainAnalyzer:
     def __init__(self):
         self._semaphore = asyncio.Semaphore(3)
         self._cache: dict[str, tuple[float, list]] = {}  # {token_addr: (timestamp, result)}
-        self._cache_ttl = 300  # 5 minutes
+        self._cache_ttl = 120  # 2 minutes
 
     async def _api_get(self, path: str, params: Optional[dict] = None) -> list | dict:
         """REST GET to Helius API."""
@@ -34,7 +34,7 @@ class OnChainAnalyzer:
                 resp.raise_for_status()
                 return resp.json()
 
-    async def get_early_buyers(self, token_address: str, limit: int = 20) -> list[dict]:
+    async def get_early_buyers(self, token_address: str, limit: int = 50) -> list[dict]:
         """Get first N buyer wallets with timing and amounts.
 
         Returns list of dicts: {wallet, amount_usd, timestamp, is_buy}

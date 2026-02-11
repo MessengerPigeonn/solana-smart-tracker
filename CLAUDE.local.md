@@ -91,13 +91,13 @@ These are the correct deep-link formats. Do NOT change without verifying against
 
 ## Callout Engine
 
-- **Thresholds**: BUY >= 65, WATCH >= 45
+- **Thresholds**: BUY >= 50, WATCH >= 38
 - **Quality gate**: mcap > 0, liquidity >= $5K (trending) / $1K (print_scan)
 - **12-factor scoring** (v2, Feb 2026): Replaced 6-factor linear system with weighted multi-factor scoring
-  - **Trending (mcap >= $500K)**: Smart Wallet Signal (20), Volume Velocity (15), Buy Pressure (12), Early Buyer Quality (12), Price Momentum (10), Token Freshness (8), Holder Distribution (8), Liquidity Health (5), Security Score (5), Social Signal (5), Wallet Overlap (+5 bonus), Anti-Rug Gate (-20 penalty)
+  - **Trending (mcap >= $500K)**: Smart Wallet Signal (22), Volume Velocity (15), Early Buyer Quality (15), Buy Pressure (10), Price Momentum (8), Token Freshness (8), Holder Distribution (7), Liquidity Health (5), Security Score (5), Social Signal (5), Wallet Overlap (+5 bonus), Hot Token Boost (+5 bonus), Anti-Rug Gate (-20 penalty)
   - **Micro-cap (PrintScan)**: Security Safety (25), Early Buyer Quality (15), Holder Distribution (15), Volume Velocity (12), Freshness (10), Buy Pressure (8), Liquidity Floor (5), Social Signal (5), Wallet Overlap (+5 bonus), Anti-Rug Gate (-30 penalty)
   - Exponential freshness decay: `exp(-age/decay_constant)` instead of step functions
-  - Smart wallet classification weights: sniper 3x, KOL 2x, whale 2x, insider 1.5x, smart_money 1x
+  - Smart wallet classification weights: sniper 3x, KOL 2x, whale 2x, insider 1.5x, smart_money 1x, promising 0.5x
   - Volume velocity = rate of change across last 3 TokenSnapshot cycles
   - Callouts store `score_breakdown` JSON, `security_score`, `social_mentions`, `early_smart_buyers`, `volume_velocity`
 - **New services**: `rugcheck.py` (Rugcheck.xyz API), `social_signals.py` (DexScreener social heuristics), `wallet_classifier.py` (SmartWallet reputation), `onchain_analyzer.py` (Helius early buyer detection)

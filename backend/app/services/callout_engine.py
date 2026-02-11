@@ -9,11 +9,12 @@ from app.models.trader_snapshot import TraderSnapshot
 from app.models.callout import Callout, Signal
 from app.models.smart_wallet import SmartWallet
 from app.models.token_snapshot import TokenSnapshot
+from app.services.hot_tokens import hot_token_queue
 
 logger = logging.getLogger(__name__)
 
 # ── Thresholds ──────────────────────────────────────────────────────────
-BUY_THRESHOLD = 55
+BUY_THRESHOLD = 50
 WATCH_THRESHOLD = 38
 MIN_LIQUIDITY = 5000
 MIN_LIQUIDITY_MICRO = 1000
@@ -31,6 +32,7 @@ WALLET_TYPE_WEIGHTS = {
     "whale": 2.0,
     "insider": 1.5,
     "smart_money": 1.0,
+    "promising": 0.5,
     "unknown": 0.0,
 }
 
@@ -275,10 +277,23 @@ async def _score_micro_token(db: AsyncSession, token: ScannedToken) -> tuple[flo
     penalty = max(penalty, -30)
     breakdown["anti_rug"] = round(penalty, 1)
 
+    # --- 11. Hot Token Boost (+5 for webhook-detected) ---
+    hot_bonus = 0.0
+    hot_entry = hot_token_queue.get(token.address)
+    if hot_entry:
+        reason_tag = hot_entry.get("reason", "")
+        if "convergence" in reason_tag:
+            hot_bonus = 5.0
+            reasons.append("real-time convergence signal")
+        else:
+            hot_bonus = 3.0
+            reasons.append("real-time smart wallet buy")
+    breakdown["hot_token"] = round(hot_bonus, 1)
+
     total_score = (
         security_score + early_buyer_score + holder_score + vol_vel_score
         + freshness_score + buy_sell_score + liquidity_score + social_score
-        + overlap_bonus + penalty
+        + overlap_bonus + hot_bonus + penalty
     )
     total_score = round(max(min(total_score, 100), 0), 1)
 
@@ -332,11 +347,11 @@ async def score_token(
     smart_wallets_map = await _lookup_smart_wallets(db, all_buyer_wallets)
     smart_wallet_list = list(smart_wallets_map.keys())
 
-    # --- 1. Smart Wallet Signal (20 pts) ---
-    smart_wallet_score = _weighted_smart_wallet_score(smart_wallets_map, 20.0)
+    # --- 1. Smart Wallet Signal (22 pts) ---
+    smart_wallet_score = _weighted_smart_wallet_score(smart_wallets_map, 22.0)
     # Fallback to scanner's smart_money_count when SmartWallet DB is sparse
     if token.smart_money_count > 0 and smart_wallet_score < 5:
-        smart_wallet_score = max(smart_wallet_score, 20.0 * min(token.smart_money_count / 5.0, 1.0))
+        smart_wallet_score = max(smart_wallet_score, 22.0 * min(token.smart_money_count / 5.0, 1.0))
     # Neutral baseline when both SmartWallet DB and scanner have no data
     if smart_wallet_score == 0 and not smart_wallets_map and (token.smart_money_count or 0) == 0:
         smart_wallet_score = 8.0
@@ -376,31 +391,31 @@ async def score_token(
             vol_vel_score = max(vol_vel_score, fallback_vol)
     breakdown["volume_velocity"] = round(vol_vel_score, 1)
 
-    # --- 3. Buy Pressure (12 pts) ---
+    # --- 3. Buy Pressure (10 pts) ---
     buy_sell_score = 0.0
     buy_count = token.buy_count_24h or len(buyers)
     sell_count = token.sell_count_24h or len(sellers)
     total_count = buy_count + sell_count
     if total_count > 0:
         buy_ratio = buy_count / total_count
-        buy_sell_score = 12.0 * min(buy_ratio / 0.8, 1.0)
+        buy_sell_score = 10.0 * min(buy_ratio / 0.8, 1.0)
         if buy_ratio > 0.65:
             reasons.append(f"strong buy pressure ({buy_ratio*100:.0f}% buys)")
     breakdown["buy_pressure"] = round(buy_sell_score, 1)
 
-    # --- 4. Early Buyer Quality (12 pts) ---
+    # --- 4. Early Buyer Quality (15 pts) ---
     early_buyer_score = 0.0
     early_smart_count = 0
     early_data_available = False
     try:
         from app.services.onchain_analyzer import onchain_analyzer
-        early_buyers = await onchain_analyzer.get_early_buyers(token.address, limit=20)
+        early_buyers = await onchain_analyzer.get_early_buyers(token.address, limit=50)
         if early_buyers:
             early_data_available = True
             early_wallet_addrs = [b["wallet"] for b in early_buyers]
             early_smart = await _lookup_smart_wallets(db, early_wallet_addrs)
             early_smart_count = len(early_smart)
-            early_buyer_score = 12.0 * min(early_smart_count / 5.0, 1.0)
+            early_buyer_score = 15.0 * min(early_smart_count / 5.0, 1.0)
             # Persist to token for future scoring passes
             token.early_buyer_smart_count = early_smart_count
             if early_smart_count > 0:
@@ -413,28 +428,28 @@ async def score_token(
         logger.debug(f"Early buyer analysis failed for {token.symbol}: {e}")
     # Neutral baseline when data source is unavailable
     if not early_data_available:
-        early_buyer_score = 6.0
+        early_buyer_score = 7.0
     breakdown["early_buyers"] = round(early_buyer_score, 1)
 
-    # --- 5. Price Momentum (10 pts) ---
+    # --- 5. Price Momentum (8 pts) ---
     momentum_score = 0.0
     pc5m = token.price_change_5m or 0
     pc1h = token.price_change_1h or 0
     # Composite: 5m weighted 0.6, 1h weighted 0.4
     raw_momentum = (pc5m * 0.6 + pc1h * 0.4)
     if raw_momentum > 20:
-        momentum_score = 10.0
-    elif raw_momentum > 10:
         momentum_score = 8.0
+    elif raw_momentum > 10:
+        momentum_score = 6.5
     elif raw_momentum > 5:
-        momentum_score = 6.0
+        momentum_score = 5.0
     elif raw_momentum > 0:
-        momentum_score = 3.0
+        momentum_score = 2.5
     else:
         momentum_score = 0.0
     # Acceleration bonus: both 5m and 1h positive
     if pc5m > 5 and pc1h > 5:
-        momentum_score = min(momentum_score + 2, 10)
+        momentum_score = min(momentum_score + 1.5, 8)
         reasons.append("price momentum")
     breakdown["momentum"] = round(momentum_score, 1)
 
@@ -449,19 +464,19 @@ async def score_token(
         freshness_score = 1.6  # ~20% of max when unknown
     breakdown["freshness"] = round(freshness_score, 1)
 
-    # --- 7. Holder Distribution (8 pts) ---
+    # --- 7. Holder Distribution (7 pts) ---
     holder_score = 0.0
     top10 = token.top10_holder_pct or 0
     if 30 <= top10 <= 60:
-        holder_score = 8.0
+        holder_score = 7.0
     elif 20 <= top10 < 30 or 60 < top10 <= 75:
-        holder_score = 5.6
+        holder_score = 5.0
     elif top10 <= 85:
-        holder_score = 3.0
+        holder_score = 2.5
     else:
         holder_score = 1.0
     if (token.dev_wallet_pct or 0) < 5 and top10 > 0:
-        holder_score = min(holder_score + 1.5, 8)
+        holder_score = min(holder_score + 1.5, 7)
     breakdown["holders"] = round(holder_score, 1)
 
     # --- 8. Liquidity Health (5 pts) ---
@@ -539,11 +554,24 @@ async def score_token(
     penalty = max(penalty, -20)
     breakdown["anti_rug"] = round(penalty, 1)
 
+    # --- 13. Hot Token Boost (+5 bonus for webhook-detected tokens) ---
+    hot_bonus = 0.0
+    hot_entry = hot_token_queue.get(token.address)
+    if hot_entry:
+        reason_tag = hot_entry.get("reason", "")
+        if "convergence" in reason_tag:
+            hot_bonus = 5.0
+            reasons.append("real-time convergence signal")
+        else:
+            hot_bonus = 3.0
+            reasons.append("real-time smart wallet buy")
+    breakdown["hot_token"] = round(hot_bonus, 1)
+
     # ── Total ────────────────────────────────────────────────────────
     total_score = (
         smart_wallet_score + vol_vel_score + buy_sell_score + early_buyer_score
         + momentum_score + freshness_score + holder_score + liquidity_score
-        + sec_score + social_score + overlap_bonus + penalty
+        + sec_score + social_score + overlap_bonus + hot_bonus + penalty
     )
     total_score = round(max(min(total_score, 100), 0), 1)
 

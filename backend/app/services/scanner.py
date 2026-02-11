@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.token import ScannedToken
 from app.models.trader_snapshot import TraderSnapshot
 from app.services.data_provider import data_provider
+from app.services.onchain_analyzer import onchain_analyzer
 
 logger = logging.getLogger(__name__)
 
@@ -285,9 +286,15 @@ async def analyze_token_trades(
 async def fetch_top_traders_for_token(
     db: AsyncSession, token_address: str, pages: int = 2, per_page: int = 10
 ) -> list[TraderSnapshot]:
-    """Fetch top traders for a token and store snapshots."""
+    """Fetch top traders for a token and store snapshots.
+
+    Primary: Birdeye top traders API.
+    Fallback: Helius recent traders (on-chain swap aggregation) when Birdeye
+    returns no results (e.g. 401/429 or empty response).
+    """
     snapshots = []
 
+    # --- Primary: Birdeye top traders ---
     for page in range(pages):
         traders = await data_provider.get_top_traders(
             address=token_address,
@@ -314,6 +321,35 @@ async def fetch_top_traders_for_token(
             )
             db.add(snapshot)
             snapshots.append(snapshot)
+
+    # --- Fallback: Helius recent traders when Birdeye returned nothing ---
+    if not snapshots:
+        try:
+            helius_traders = await onchain_analyzer.get_recent_traders(token_address)
+            for trader in helius_traders:
+                wallet = trader.get("wallet", "")
+                if not wallet:
+                    continue
+
+                snapshot = TraderSnapshot(
+                    token_address=token_address,
+                    wallet=wallet,
+                    volume_buy=trader.get("volume_buy", 0) or 0,
+                    volume_sell=trader.get("volume_sell", 0) or 0,
+                    trade_count_buy=trader.get("trade_count_buy", 0) or 0,
+                    trade_count_sell=trader.get("trade_count_sell", 0) or 0,
+                    estimated_pnl=trader.get("estimated_pnl", 0) or 0,
+                    scanned_at=datetime.now(timezone.utc),
+                )
+                db.add(snapshot)
+                snapshots.append(snapshot)
+
+            if snapshots:
+                logger.info(
+                    f"Helius fallback: fetched {len(snapshots)} traders for {token_address[:8]}"
+                )
+        except Exception as e:
+            logger.warning(f"Helius trader fallback failed for {token_address[:8]}: {e}")
 
     await db.flush()
     return snapshots
